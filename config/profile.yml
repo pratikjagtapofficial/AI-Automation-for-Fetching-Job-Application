@@ -1,0 +1,125 @@
+# PJ's profile — the single source of truth for matching and, later,
+# for the Validator whitelist and the Answer Bank.
+#
+# RULE: Nothing in this file may be invented. Fields marked `null` are
+# genuinely unknown and MUST be filled by PJ before Phase 2/3 use them.
+# The system asks in Telegram rather than guessing.
+
+identity:
+  full_name: Pratik Jagtap
+  email: pratikjagtapofficial@gmail.com
+  phone: null              # TODO(PJ): needed for application forms
+  location: Pune, Maharashtra, India
+  address: null            # TODO(PJ): as it should appear on forms
+  linkedin: null           # TODO(PJ)
+  github: null             # TODO(PJ)
+  portfolio: null          # TODO(PJ): optional
+
+current_role:
+  title: AI Developer
+  company: HireTalent
+  location: Pune
+  # Quiet search: this employer and its clients are hard-blacklisted.
+  confidential_search: true
+
+education:
+  - degree: MCA
+    institution: null      # TODO(PJ)
+    completed: 2026-06
+    score: null            # TODO(PJ): CGPA or percentage
+  - degree: null           # TODO(PJ): bachelor's
+    institution: null
+    completed: null
+    score: null
+
+compensation:
+  current_ctc_lpa: null    # TODO(PJ): some forms ask
+  expected_min_lpa: 4
+  expected_max_lpa: 6
+  notice_period_days: 30
+  earliest_joining: null   # derived from notice unless PJ overrides
+
+# ─────────────────────────────────────────────────────────────────
+# SKILLS WHITELIST
+# The Validator (Phase 2) rejects any resume edit introducing a skill
+# that is not listed under `has`. This is a hard-coded gate, not an
+# LLM judgement call. `lacks` exists so gaps are surfaced honestly in
+# the call-prep card instead of being papered over.
+# ─────────────────────────────────────────────────────────────────
+skills:
+  has:
+    languages:      [Python]
+    genai:          [LangChain, RAG, MCP, prompt engineering, agentic AI, multi-agent systems]
+    tools:          [Claude Code]
+    data:           [vector databases]
+    backend:        [FastAPI, REST APIs]
+
+  lacks:
+    # NEVER add these to a resume, cover letter, or screening answer.
+    # If a JD requires them, apply anyway and prepare an honest framing.
+    - LangGraph
+    - CrewAI
+    - AutoGen
+    - Docker
+    - Kubernetes
+    - AWS
+    - Azure
+    - GCP
+
+  # Honest framing the call-prep card offers when a JD wants something
+  # from `lacks`. Reviewed and owned by PJ — edit freely.
+  gap_framing:
+    default: >-
+      Not hands-on with this yet. I've shipped the application layer of
+      LLM systems end to end, and I pick up tooling quickly.
+    Docker: >-
+      Haven't used it in production. I've built and deployed FastAPI
+      services, so the concepts are familiar and I'd ramp fast.
+    LangGraph: >-
+      I've built multi-agent orchestration directly with LangChain and
+      MCP rather than LangGraph — same problems, different tool.
+
+search:
+  titles:
+    - AI Developer
+    - AI Engineer
+    - Associate AI Engineer
+    - Agentic AI Engineer
+    - GenAI Engineer
+    - Generative AI Engineer
+    - Machine Learning Engineer
+    - LLM Engineer
+    - Applied AI Engineer
+
+  # Titles containing these are dropped even if experience range fits.
+  exclude_titles:
+    [Senior, Sr., Staff, Lead, Principal, Manager, Head, Director,
+     Architect, "II", "III", Founding]
+
+  experience_years_max: 2
+
+  locations:
+    - {name: Remote,     weight: 1.30}   # top preference
+    - {name: Pune,       weight: 1.20}
+    - {name: Bengaluru,  weight: 1.00}
+    - {name: Hyderabad,  weight: 1.00}
+    - {name: Noida,      weight: 0.95}
+    - {name: Gurugram,   weight: 0.95}
+    - {name: India,      weight: 0.90}   # unspecified Indian location
+
+  freshness_hours: 24
+
+blacklist:
+  companies:
+    - HireTalent
+  # TODO(PJ): add HireTalent's clients — critical for a quiet search
+  client_companies: []
+  # Staffing/recruitment firms are skipped by keyword.
+  keywords:
+    [staffing, recruitment, consultancy, manpower, talent solutions,
+     hiring partner, rpo, headhunt]
+
+limits:
+  applications_per_day: 20
+  strong_fit_threshold: 70    # >= this pings Telegram live
+  min_score_to_show: 40       # below this is dropped entirely

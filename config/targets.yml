@@ -1,0 +1,115 @@
+# ATS board slugs to poll.
+#
+# ⚠️  These are CANDIDATES, not verified facts. Company ATS slugs change
+# and cannot be reliably guessed. Run:
+#
+#     python scripts/verify_boards.py
+#
+# ...which tests every slug against the live API and rewrites this file
+# with only the ones that actually respond. Never trust an unverified
+# slug — a wrong one fails silently and you lose a source without noticing.
+#
+# status: unverified = never tested · ok = responded · dead = 404/empty
+
+greenhouse:
+  # Public API: https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true
+  candidates:
+    # ─ Global AI / data infra (India engineering presence) ─
+    - databricks
+    - confluent
+    - mongodb
+    - elastic
+    - gitlab
+    - hashicorp
+    - dropbox
+    - twilio
+    - stripe
+    - figma
+    - notion
+    - airtable
+    - asana
+    - samsara
+    - rippling
+    - coinbase
+    - doordash
+    - scaleai
+    - anthropic
+    - cohere
+    - huggingface
+    - pinecone
+    # ─ India product companies ─
+    - postman
+    - browserstack
+    - hasura
+    - chargebee
+    - freshworks
+    - razorpay
+    - zeta
+    - cred
+    - groww
+    - meesho
+    - sharechat
+    - dream11
+    - swiggy
+    - phonepe
+    - innovaccer
+    - darwinbox
+    - whatfix
+    - mindtickle
+    - clevertap
+    - moengage
+    - druva
+    - harness
+    - nutanix
+    - rubrik
+    - icertis
+
+lever:
+  # Public API: https://api.lever.co/v0/postings/{slug}?mode=json
+  candidates:
+    - gupshup
+    - exotel
+    - capillarytech
+    - wingify
+    - zenoti
+    - netskope
+    - cohesity
+    - udaan
+    - unacademy
+    - upgrad
+    - plaid
+    - ramp
+    - brex
+
+ashby:
+  # Public API: https://api.ashbyhq.com/posting-api/job-board/{slug}
+  candidates:
+    - openai
+    - perplexity-ai
+    - langchain
+    - weightsandbiases
+    - modal
+    - together-ai
+    - deepgram
+    - assemblyai
+
+smartrecruiters:
+  # Public API: https://api.smartrecruiters.com/v1/companies/{slug}/postings
+  candidates:
+    - Visa
+    - Bosch
+    - Publicis
+    - McDonalds
+
+# ─────────────────────────────────────────────────────────────────
+# Sources requiring scraping (Phase 3+, Playwright / Apify credits).
+# Deliberately NOT enabled in Phase 1 — the ATS APIs above are free,
+# unlimited, and give real posting timestamps.
+# ─────────────────────────────────────────────────────────────────
+scraped_sources:
+  naukri:      {enabled: false, phase: 4, method: apify}
+  linkedin:    {enabled: false, phase: 4, method: apify, note: "read-only, never automate applying"}
+  indeed:      {enabled: false, phase: 4, method: connector}
+  instahyre:   {enabled: false, phase: 4, method: playwright}
+  wellfound:   {enabled: false, phase: 4, method: playwright}
+  cutshort:    {enabled: false, phase: 4, method: playwright}

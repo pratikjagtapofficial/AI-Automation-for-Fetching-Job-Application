@@ -1,0 +1,40 @@
+# ─── SECRETS — never commit ───────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+cookies/
+sessions/
+*_token*
+*_secret*
+
+# ─── Personal documents ───────────────────────────────────────
+# Resume PDFs are generated per-application; the YAML source is
+# tracked, the rendered output is not.
+output/
+generated/
+*.pdf
+!docs/*.pdf
+
+# ─── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# ─── Playwright ───────────────────────────────────────────────
+.playwright/
+screenshots/
+!screenshots/.gitkeep
+
+# ─── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
