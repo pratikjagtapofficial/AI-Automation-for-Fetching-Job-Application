@@ -46,11 +46,79 @@ Telegram, applies, and keeps a call-prep record for every application.
 
 > Large service companies (TCS/Infosys/Wipro/etc.) are **in scope** — not excluded.
 
-## Sources
+## Sources — empirically tested 2026-08-06
 
-Company career pages & ATS boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workday) →
-Naukri, LinkedIn, Indeed, Instahyre, Wellfound, CutShort.
-PJ has accounts on all major portals.
+**Requirement:** official postings only — company career pages, or postings made by
+the company/HR directly. Not agency reposts.
+
+### Access test results
+
+| Source | Raw Playwright | Firecrawl | Apify | Verdict |
+|---|---|---|---|---|
+| Greenhouse/Lever/Ashby/SmartRecruiters | ✅ free JSON API | — | — | **use** |
+| Naukri | ❌ 403 Akamai | ✅ 200 | ✅ structured | **use Apify** |
+| Hirist (tech-focused) | ✅ | — | — | **use** |
+| Instahyre | ✅ (JS render) | — | — | use |
+| CutShort | ⚠️ thin | — | — | maybe |
+| Internshala | ✅ | — | — | **skip — wrong roles** |
+| Foundit / Wellfound / Indeed | ❌ 403 | — | — | skip |
+| LinkedIn | — | — | — | **excluded, ban risk** |
+
+### Measured yield
+
+ATS APIs alone: 4,352 postings → **2** in-scope India/remote junior AI roles.
+Structurally weak — those boards are US companies. Naukri is where the Indian
+entry-level market actually is.
+
+Internshala scrapes cleanly but its "AI jobs" are professors, trainers and video
+editors. Accessibility ≠ relevance.
+
+### Naukri via Apify — actor cost comparison
+
+| Actor | Per 100 jobs | Per month @2×/day |
+|---|---|---|
+| **valig/naukri-jobs-scraper** | $0.041 | **~$2.50** ✅ fits free tier |
+| memo23/naukri-scraper | $0.155 | ~$9.30 |
+| muhammetakkurtt/naukri-job-scraper | $0.51 | ~$30 |
+
+**Chosen: `valig/naukri-jobs-scraper`** — 12× cheaper than the one the Cowork task
+currently uses, returns 70 structured fields in ~7s, and critically exposes:
+
+- `consultant: false` + `companyApplyJob: true` → **official company posting**, the
+  direct implementation of the official-sources-only requirement
+- `createdDateText` → exact timestamp, no freshness guessing
+- `experience.minimum/maximum`, `salary.*`, `skills.preferred`, `description.full`
+
+Firecrawl also passes Naukri (1 credit/page, `proxy: basic`) — kept as fallback, but
+it returns markdown needing parsing where Apify returns clean JSON.
+
+### Cost position — must stay ₹0
+
+Everything above runs at **zero out-of-pocket cost**:
+
+| Component | Free allowance | Our usage | Paid? |
+|---|---|---|---|
+| GitHub Actions | 2000 min/mo | ~35 min/day | ₹0 |
+| ATS JSON APIs | unlimited | unlimited | ₹0 |
+| Playwright (Hirist/Instahyre) | own compute | — | ₹0 |
+| Apify (Naukri) | $5/mo credits | ~$2.50/mo | ₹0 |
+| Gemini Flash | free tier | 10–20 jobs/day | ₹0 |
+
+Apify is the only line item consuming a metered allowance. Guard rails:
+1. Cap `maxItems` per run so a runaway loop cannot burn the month's credits.
+2. Alert in Telegram at 70% credit consumption.
+3. **Zero-dependency fallback:** if the free tier ever changes, drop Naukri and run
+   on ATS APIs + Hirist + Instahyre + CutShort alone via self-hosted Playwright.
+   Coverage drops materially — Naukri is the largest Indian source — but cost is
+   structurally ₹0 with no third party involved.
+
+### Social media / HR posts — open problem
+
+Officially-posted roles on LinkedIn are the weakest link: LinkedIn is excluded for
+ban risk, so HR posts there cannot be monitored safely. No good free substitute
+exists yet. Company career pages + Naukri's `companyApplyJob` flag cover most of
+the "official" requirement; treat social monitoring as unsolved rather than
+pretending it is covered.
 
 ---
 
