@@ -205,3 +205,31 @@ Each phase is independently useful.
 - CAPTCHA-protected forms will fail; these become manual handoffs.
 - Gemini free tier trains on submitted data — resume content is exposed.
 - Session cookies for Naukri/Indeed expire silently and need periodic manual refresh.
+
+---
+
+## Apify budget allocation (decided 2026-08-06)
+
+The $5/month free credit is shared between the Cowork task and this
+pipeline. Measured usage on 2026-08-06 was $0.69 by the 6th — roughly
+$4.20/month projected, almost the entire allowance, from Cowork alone.
+
+| System | Frequency | Actor | Cost/mo |
+|---|---|---|---|
+| Cowork (fallback) | 1×/day | `valig/naukri-jobs-scraper` | ~$1.26 |
+| GitHub pipeline | 2×/day | `valig/naukri-jobs-scraper` | ~$2.52 |
+| **Total** | | | **~$3.78** |
+
+**LinkedIn is not scraped by either system.** Every available actor costs
+$6–10/month on its own — `fantastic-jobs` at $0.16/run, and even
+`cheap_scraper` at $0.11/run because it bills a 150-result minimum. No
+LinkedIn source fits a zero-cost budget, and it was already excluded for
+applying. Company career pages plus Naukri's `companyApplyJob` flag cover
+the official-postings requirement without it.
+
+Guard rails:
+1. `MAX_ITEMS_PER_SEARCH` caps items per run in `src/naukri.py`.
+2. Alert in Telegram at 70% credit consumption (not yet implemented).
+3. If the free tier ever changes: drop Naukri, fall back to ATS APIs +
+   Hirist + Instahyre via self-hosted Playwright. Coverage drops, cost is
+   structurally zero.
