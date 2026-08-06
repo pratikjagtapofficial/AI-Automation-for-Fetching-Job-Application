@@ -14,6 +14,8 @@ on:
         description: "Scan and log, but send nothing to Telegram"
         type: boolean
         default: false
+  repository_dispatch:       # fired by /scan from Telegram
+    types: [run-scout]
 
 # A slow run must never overlap the next scheduled one.
 concurrency:
@@ -38,6 +40,18 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Answer pending Telegram commands
+        # Commands sent between scheduled runs are answered here. Not
+        # instant -- a webhook is the fix for that -- but it means /status
+        # and /brief still work without an always-on host.
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python -m src.bot --once
 
       - name: Run scout
         env:
