@@ -1,0 +1,199 @@
+# Structured resume — the tailoring source of truth.
+#
+# Derived from Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf.
+#
+# WHY YAML AND NOT THE .docx:
+# Tailoring means selecting and rephrasing *specific bullets* per job.
+# Editing a Word file blindly is where these systems produce garbage —
+# broken formatting, duplicated sections, silently dropped content. Here
+# each bullet is addressable data, the tailor may only reorder/reword
+# existing entries, and rendering is deterministic.
+#
+# RULES:
+#  * `text` is PJ's own wording and is never overwritten. Tailoring
+#    produces a variant; the original always remains recoverable.
+#  * `tags` drive relevance matching against a JD. Every tag must exist
+#    in profile.yml skills.has — the Validator enforces this.
+#  * `locked: true` means never rewrite (facts, dates, titles).
+
+meta:
+  source_pdf: Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf
+  parsed: 2026-08-06
+  target_pages: 1        # a fresher resume that spills to 2 pages reads badly
+
+contact:
+  locked: true
+  name: Pratik Jagtap
+  location: Pune, Maharashtra, India
+  phone: "+91 9699504720"
+  email: pratikjagtapofficial@gmail.com
+  linkedin: https://www.linkedin.com/in/pratikdjagtap/
+  github: https://github.com/pratikjagtapofficial
+
+# Rewritten per job — this is the highest-leverage tailoring target,
+# since ATS keyword matching weighs the top of the document heavily.
+headline:
+  default: "Agentic AI Engineer | GenAI Developer | LLMs, RAG & MCP"
+  variants:
+    genai:    "GenAI Engineer | LLMs, RAG & Prompt Engineering"
+    agentic:  "Agentic AI Engineer | Multi-Agent Systems, MCP & LangChain"
+    ml:       "AI/ML Engineer | Python, ML Pipelines & LLM Applications"
+    backend:  "AI Developer | Python, FastAPI & LLM-Powered Services"
+
+summary:
+  default: >-
+    Agentic AI / GenAI Developer with hands-on experience designing, building,
+    and deploying AI Agents, Large Language Model (LLM)-powered applications,
+    and Retrieval-Augmented Generation (RAG) pipelines that automate complex,
+    multi-step business workflows. Experienced across the Model Context
+    Protocol (MCP), Claude Code, LangChain, and vector database ecosystems,
+    with a strong foundation in prompt engineering, Python development, and
+    API integration. Skilled in owning the full GenAI product lifecycle — from
+    architecture through production deployment — and translating ambiguous
+    business problems into scalable, unified AI platforms.
+  max_words: 90
+
+skills:
+  # Order is tailored per JD; membership is not. The Validator blocks any
+  # addition that is not already present here.
+  groups:
+    - name: "Agentic AI & GenAI"
+      items: [AI Agents, Multi-Agent Systems, Agentic AI,
+              Model Context Protocol (MCP), Agent-to-Agent (A2A) Protocol,
+              LangChain, LangGraph, Retrieval-Augmented Generation (RAG),
+              Prompt Engineering]
+    - name: "LLMs & AI Platforms"
+      items: [Claude Code, Gemini, GPT (via Codex), Large Language Models (LLMs)]
+    - name: "Programming & Frameworks"
+      items: [Python, SQL, FastAPI, Streamlit]
+    - name: "Retrieval & Vector Search"
+      items: [Vector Databases, PostgreSQL, PageIndex, Semantic Search]
+    - name: "Machine Learning & Data Science"
+      items: [XGBoost, LSTM, Scikit-learn, NLP, Time-Series Forecasting,
+              Predictive Modeling, Feature Engineering]
+    - name: "Cloud, Infra & Dev Tools"
+      items: [DigitalOcean, Vultr, Cloudflare, Git/GitHub, REST API Integration]
+
+experience:
+  - id: hiretalent
+    locked_fields: [role, company, from, to]
+    role: AI Developer
+    company: HireTalent
+    company_note: Staffing & Recruiting Firm
+    from: 2026-03
+    to: present
+    bullets:
+      - id: ht1
+        text: >-
+          Design and develop AI agents that automate repetitive, manual tasks
+          across teams, reducing operational overhead.
+        tags: [AI Agents, Agentic AI, Python]
+      - id: ht2
+        text: >-
+          Architect an enterprise application integrating LLMs and RAG
+          pipelines with vector databases, consolidating fragmented workflows
+          into one unified AI platform.
+        tags: [LLMs, RAG, Vector Databases, Agentic AI]
+      - id: ht3
+        text: >-
+          Integrate third-party and internal APIs into agentic workflows,
+          enabling reliable, end-to-end automation across enterprise systems.
+        tags: [REST API Integration, Agentic AI, Python]
+
+  - id: rubixe
+    locked_fields: [role, company, from, to]
+    role: Data Science & AI Consultant Intern
+    company: Rubixe
+    from: 2025-07
+    to: 2026-01
+    bullets:
+      - id: rx1
+        text: >-
+          Supported an AI and data science consulting engagement, applying data
+          analysis and ML techniques to solve business problems for enterprise
+          clients.
+        tags: [Scikit-learn, NLP, Predictive Modeling]
+      - id: rx2
+        text: >-
+          Developed and evaluated predictive models, performing data
+          preprocessing and feature engineering to improve model accuracy.
+        tags: [Predictive Modeling, Feature Engineering, XGBoost, Scikit-learn]
+      - id: rx3
+        text: >-
+          Translated analytical findings into actionable business
+          recommendations through structured, AI-driven reporting.
+        tags: [NLP, Predictive Modeling]
+
+projects:
+  - id: agent_neo
+    name: "Agent Neo — Unified AI Application for Recruitment Automation"
+    from: 2026-05
+    to: present
+    bullets:
+      - id: an1
+        text: >-
+          Contributing to an AI application automating high-volume recruitment
+          tasks — sourcing, screening, submission — using LangChain, RAG, and
+          vector databases.
+        tags: [LangChain, RAG, Vector Databases, Agentic AI]
+      - id: an2
+        text: >-
+          Deploying the platform on Vultr with PostgreSQL, engineered for scale
+          to reduce manual recruiter effort.
+        tags: [Vultr, PostgreSQL]
+
+  - id: juno
+    name: "Juno — Onboarding Agent for New Joiners"
+    from: 2026-06
+    to: 2026-07
+    bullets:
+      - id: ju1
+        text: >-
+          Built an onboarding agent guiding new hires through company culture,
+          policies, and processes using internal documents and video content.
+        tags: [AI Agents, RAG, LangChain]
+      - id: ju2
+        text: >-
+          Reduced manual onboarding effort with a self-serve resource for new
+          joiners to get up to speed before day one.
+        tags: [AI Agents]
+
+  - id: spy
+    name: "SPY — CCTV Monitoring Agent"
+    from: 2026-07
+    to: present
+    bullets:
+      - id: sp1
+        text: >-
+          Contributing to a computer vision monitoring system using YOLO,
+          integrated with physical devices and Cloudflare-based storage.
+        tags: [YOLO, Computer Vision, Cloudflare]
+      - id: sp2
+        text: >-
+          Building real-time event detection and automated reporting to reduce
+          manual surveillance review.
+        tags: [Computer Vision, YOLO]
+
+education:
+  locked: true
+  - degree: Master of Computer Applications (MCA)
+    institution: Sinhgad Institute of Management, Pune
+    from: 2024-09
+    to: 2026-06
+    score: null          # TODO(PJ): CGPA/percentage
+  - degree: Bachelor of Computer Applications (BCA)
+    institution: Mugutrao Sahebrao Kakade College, Pune
+    from: 2021-07
+    to: 2024-06
+    score: null          # TODO(PJ)
+
+certifications:
+  locked: true
+  - IABAC — Certified Data Scientist
+  - IABAC — Artificial Intelligence Expert Certification
+  - AI Engineer Certification, DataMites Global Institute
+
+achievements:
+  locked: true
+  - 1st Place, 3D Model Design Competition
+  - CybageKhushboo Scholarship, Khushboo Charitable Trust
