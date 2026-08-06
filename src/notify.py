@@ -53,6 +53,40 @@ class Telegram:
             time.sleep(2 ** attempt)
         return last
 
+    def send_document(self, path, caption: str = "") -> dict:
+        """Upload a file. Caption is capped at Telegram's 1024 limit."""
+        from pathlib import Path as _P
+        p = _P(path)
+        if not p.exists():
+            return {"ok": False, "error": f"missing file: {p}"}
+        url = API.format(token=self.token, method="sendDocument")
+        for attempt in range(3):
+            try:
+                with p.open("rb") as fh:
+                    r = httpx.post(
+                        url,
+                        data={
+                            "chat_id": self.chat_id,
+                            "caption": caption[:1024],
+                            "parse_mode": "HTML",
+                        },
+                        files={"document": (p.name, fh, "application/pdf")},
+                        timeout=90.0,
+                    )
+                data = r.json()
+                if data.get("ok"):
+                    return data
+                if r.status_code == 429:
+                    time.sleep(min(
+                        data.get("parameters", {}).get("retry_after", 5), 30))
+                    continue
+                return data
+            except Exception as e:
+                if attempt == 2:
+                    return {"ok": False, "error": str(e)}
+                time.sleep(2 ** attempt)
+        return {"ok": False}
+
     def send(self, text: str, preview: bool = False) -> dict:
         """Send one message, splitting on newlines if over the limit."""
         chunks = _split(text, MAX_LEN)

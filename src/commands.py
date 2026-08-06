@@ -27,6 +27,7 @@ HELP = """<b>Commands</b>
 /pending — matches awaiting your decision
 /brief &lt;company&gt; — what did I send them?
 /diff &lt;company&gt; — full resume changes for that job
+/resume &lt;company&gt; — send the tailored PDF for that job
 /help — this message
 
 You can also just type a company name to look it up."""
@@ -74,6 +75,38 @@ def dispatch_workflow(event: str = "run-scout") -> tuple[bool, str]:
         return False, f"HTTP {r.status_code}"
     except Exception as e:
         return False, type(e).__name__
+
+
+def resume_for(company: str):
+    """-> (Path, caption) for a tailored PDF, or (None, error text).
+
+    Re-rendered from the stored tailoring rather than kept on disk: the
+    JSON is the durable artefact, runners are ephemeral, and a PDF can
+    always be rebuilt from it.
+    """
+    import re as _re
+    from pathlib import Path as _P
+    import yaml as _yaml
+    from .render import render as _render
+
+    root = _P(__file__).resolve().parents[1]
+    try:
+        with store.connect() as conn:
+            rows = store.find_by_company(conn, company)
+            row = next((r for r in rows if r["tailored_json"]), None)
+            if not row:
+                return None, (f"No tailored resume stored for "
+                              f"<b>{html.escape(company)}</b>.")
+            t = store.get_tailoring(conn, row["key"]) or {}
+            title, comp = row["title"], row["company"]
+        resume = _yaml.safe_load(
+            (root / "config" / "resume.yml").read_text(encoding="utf-8"))
+        safe = _re.sub(r"[^A-Za-z0-9]+", "_", f"{comp}_{title}")[:60].strip("_")
+        pdf, _pages = _render(resume, root / "output" / f"Pratik_Jagtap_{safe}.pdf",
+                              tailored=t)
+        return pdf, f"Tailored for <b>{html.escape(comp)}</b> — {html.escape(title)}"
+    except Exception as ex:
+        return None, f"Could not render: {html.escape(type(ex).__name__)}"
 
 
 def handle(text: str) -> str:
@@ -153,6 +186,14 @@ def handle(text: str) -> str:
                         f"     {e(r['company'])} · {_age(r['posted_at'])}"
                     )
                 return "\n".join(out)
+
+            if cmd == "resume":
+                if not arg:
+                    return "Usage: <code>/resume &lt;company&gt;</code>"
+                # bot.py intercepts this and uploads the file; reaching
+                # here means the transport could not send documents.
+                return ("<i>Preparing the PDF…</i> if nothing arrives, the "
+                        "sender does not support file upload.")
 
             if cmd == "diff":
                 if not arg:

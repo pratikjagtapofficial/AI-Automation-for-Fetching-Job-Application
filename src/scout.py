@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -22,6 +23,7 @@ import yaml
 from . import hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
+from .render import render
 from .scorer import score_all
 from .tailor import tailor
 from .sources import fetch_all
@@ -217,15 +219,45 @@ def main() -> int:
                 errors.append(f"tailor[{j.company}]: {type(ex).__name__}")
                 print(f"  tailor ERROR: {j.company} — {ex}")
 
+            # Render the tailored PDF so PJ receives an actual file, not
+            # just a description of edits. Rendered on demand rather than
+            # committed: the tailoring JSON is the durable artefact and a
+            # PDF can always be rebuilt from it, so binaries stay out of git.
+            if result and result.ok:
+                try:
+                    safe = re.sub(r"[^A-Za-z0-9]+", "_",
+                                  f"{j.company}_{j.title}")[:60].strip("_")
+                    pdf, pages = render(
+                        resume, ROOT / "output" / f"Pratik_Jagtap_{safe}.pdf",
+                        tailored={
+                            "headline": result.headline,
+                            "summary": result.summary,
+                            "skill_order": result.skill_order,
+                            "bullets": result.bullets,
+                        })
+                    result._pdf = pdf
+                    result._pages = pages
+                    if pages > 1:
+                        errors.append(
+                            f"render[{j.company}]: {pages} pages — too long "
+                            f"for an entry-level resume")
+                except Exception as ex:
+                    errors.append(f"render[{j.company}]: {type(ex).__name__}")
+
             tailored[store.job_key(j)] = result
             # Gemini's free tier is rate-limited per minute; a short gap
             # keeps a batch from tripping it.
             time.sleep(4)
 
-        # Strong fits get a full card with the resume diff attached.
+        # Strong fits get a full card with the resume diff attached, plus
+        # the tailored PDF itself.
         for j in strong:
-            tg.send(tailored_card(j, tailored.get(store.job_key(j))),
-                    preview=False)
+            res = tailored.get(store.job_key(j))
+            tg.send(tailored_card(j, res), preview=False)
+            pdf = getattr(res, "_pdf", None) if res else None
+            if pdf:
+                tg.send_document(
+                    pdf, caption=f"Tailored for <b>{j.company}</b> — {j.title}")
 
         # Everything else batches, with a marker showing which were
         # tailored so PJ knows a /diff is available.

@@ -24,7 +24,7 @@ import time
 
 import httpx
 
-from .commands import handle
+from .commands import handle, resume_for
 
 API = "https://api.telegram.org/bot{token}/{method}"
 OFFSET_FILE = ".bot_offset"
@@ -88,7 +88,21 @@ def poll_once(token: str, offset: int, timeout: int = 0) -> int:
 
         text = msg.get("text", "")
         print(f"<- {text!r}")
-        reply = handle(text)
+
+        # /resume returns a file rather than text.
+        if text.strip().lower().startswith("/resume"):
+            arg = text.split(maxsplit=1)[1].strip() if " " in text else ""
+            if arg:
+                path, caption = resume_for(arg)
+                if path:
+                    from .notify import Telegram
+                    Telegram(token, chat_id).send_document(path, caption)
+                    continue
+                reply = caption
+            else:
+                reply = "Usage: <code>/resume &lt;company&gt;</code>"
+        else:
+            reply = handle(text)
         try:
             httpx.post(
                 API.format(token=token, method="sendMessage"),
