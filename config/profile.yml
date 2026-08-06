@@ -42,16 +42,21 @@ experience:
       to: 2026-01
 
 education:
+  # MCA is NOT awarded — coursework done, final project not submitted.
+  # Recorded accurately so nothing downstream can state otherwise.
   - degree: MCA
     institution: Sinhgad Institute of Management, Pune
     from: 2024-09
-    completed: 2026-06
-    score: null            # TODO(PJ): CGPA/percentage — forms ask
+    completed: null
+    status: pursuing
+    note: Coursework complete; degree pending final project submission
+    score: null
   - degree: BCA
     institution: Mugutrao Sahebrao Kakade College, Pune
     from: 2021-07
     completed: 2024-06
-    score: null            # TODO(PJ)
+    status: awarded
+    score: 7.78 CGPA
 
 certifications:
   - IABAC Certified Data Scientist
@@ -59,7 +64,7 @@ certifications:
   - AI Engineer Certification — DataMites Global Institute
 
 compensation:
-  current_ctc_lpa: null    # TODO(PJ)
+  current_ctc_lpa: 3.5
   expected_min_lpa: 4
   expected_max_lpa: 6
   notice_period_days: 30

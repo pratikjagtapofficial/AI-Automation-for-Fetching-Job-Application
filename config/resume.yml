@@ -177,16 +177,21 @@ projects:
 education:
   locked: true
   items:
+    # "to: 2026-06" previously read as an awarded degree. It is not
+    # awarded — coursework is complete, the final project is pending.
+    # Rendering it as complete would be a false claim on every
+    # application sent.
     - degree: Master of Computer Applications (MCA)
       institution: Sinhgad Institute of Management, Pune
       from: 2024-09
-      to: 2026-06
-      score: null          # TODO(PJ): CGPA/percentage
+      to: Pursuing
+      note: Coursework completed; degree pending final project submission
+      score: null
     - degree: Bachelor of Computer Applications (BCA)
       institution: Mugutrao Sahebrao Kakade College, Pune
       from: 2021-07
       to: 2024-06
-      score: null          # TODO(PJ)
+      score: 7.78 CGPA
 
 certifications:
   locked: true

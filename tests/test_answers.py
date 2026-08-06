@@ -22,15 +22,17 @@ ANSWERABLE = [
     ("Gender", "Decline to self-identify"),
     ("How did you hear about us?", "Company careers page"),
     ("Current employer", "HireTalent"),
+    ("Current CTC", "3.5"),
+    ("PIN code", "411014"),
+    ("Street address", "Vadgaon Sheri, Pune, Maharashtra"),
+    ("What is your CGPA?", "7.78 CGPA"),
+    ("Highest qualification", "Bachelor of Computer Applications (BCA)"),
 ]
 
 # Must return None -> pause and ask PJ. Answering any of these would put
 # an unverified claim on a real application.
 MUST_ESCALATE = [
-    "What is your CGPA?",                      # bank value is null
-    "Current CTC",                             # null
-    "Street address",                          # null
-    "PIN code",                                # null
+    "What was your MCA final project grade?",  # degree not awarded
     "How many years of experience with Rust?", # unknown technology
     "Years of experience with Snowflake",      # unknown technology
     "Why do you want to work at Acme Corp?",   # free text, never canned

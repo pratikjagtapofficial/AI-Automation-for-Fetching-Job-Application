@@ -24,8 +24,10 @@ identity:
   city: Pune
   state: Maharashtra
   country: India
-  postal_code: null          # TODO(PJ)
-  street_address: null       # TODO(PJ)
+  postal_code: "411014"
+  street_address: "Vadgaon Sheri, Pune, Maharashtra"
+  permanent_address: "At/Post Waki, Tal. Baramati, Dist. Pune, Maharashtra"
+  permanent_postal_code: "412306"
   linkedin: https://www.linkedin.com/in/pratikdjagtap/
   github: https://github.com/pratikjagtapofficial
   portfolio: null
@@ -63,19 +65,36 @@ compensation:
   expected_max_lpa: 6
   expected_text: "4-6 LPA"
   single_value_lpa: 5
-  current_ctc_lpa: null      # TODO(PJ) — many Indian forms require this
+  current_ctc_lpa: 3.5
+  current_ctc_text: "3.5 LPA"
   negotiable: true
 
 education:
-  highest_degree: Master of Computer Applications (MCA)
-  # Forms ask for these constantly and they cannot be guessed.
+  # MCA coursework is done but the final project was not submitted, so
+  # the degree is NOT awarded. Highest *completed* qualification is the
+  # BCA. Stating MCA as complete would be false on an application and
+  # would not survive a transcript check.
+  highest_degree: Bachelor of Computer Applications (BCA)
+  highest_completed_degree: Bachelor of Computer Applications (BCA)
+
   mca_institution: Sinhgad Institute of Management, Pune
-  mca_completion: "June 2026"
-  mca_score: null            # TODO(PJ) — CGPA or percentage
+  mca_status: Pursuing — coursework complete, final project pending
+  mca_completion: "Coursework completed 2026; degree pending project submission"
+  mca_score: null            # not applicable until the degree is awarded
+
   bca_institution: Mugutrao Sahebrao Kakade College, Pune
   bca_completion: "June 2024"
-  bca_score: null            # TODO(PJ)
-  graduation_year: "2026"
+  bca_score: "7.78 CGPA"
+
+  graduation_year: "2024"    # year of the completed degree (BCA)
+
+  # Used verbatim when a form or interviewer asks. PJ's own framing —
+  # accurate, and stronger than it sounds: he was hired before finishing.
+  mca_explanation: >-
+    I completed my MCA coursework at Sinhgad Institute of Management. I
+    joined HireTalent as an AI Developer during my final semester and
+    prioritised the role over the final project submission, so the degree
+    is pending. I am submitting in the next cycle.
 
 experience:
   total_years: 1

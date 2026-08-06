@@ -183,6 +183,10 @@ def _build(resume: dict, tailored: dict | None, d: dict) -> list:
             if period:
                 line += f" ({_esc(period)})"
             flow.append(Paragraph(line, st["body"]))
+            # An unawarded degree must say so on the page itself. A date
+            # range alone reads as "completed", which would be false.
+            if e.get("note"):
+                flow.append(Paragraph(_esc(e["note"]), st["meta"]))
 
     certs = (resume.get("certifications") or {}).get("items") or []
     if certs:

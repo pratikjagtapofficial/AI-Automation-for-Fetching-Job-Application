@@ -90,7 +90,9 @@ FIELD_RULES: list[tuple[str, str]] = [
     (r"\bexpected (ctc|salary|compensation)\b", "compensation.expected_text"),
     (r"\bhighest (qualification|degree|education)\b",
                                                "education.highest_degree"),
-    (r"\b(cgpa|gpa|percentage|marks|aggregate)\b", "education.mca_score"),
+    # Points at the BCA: it is the awarded degree, so 7.78 is the honest
+    # answer. The MCA has no final score — the degree is not conferred.
+    (r"\b(cgpa|gpa|percentage|marks|aggregate)\b", "education.bca_score"),
     (r"\bgraduation year\b|\byear of (passing|graduation)\b",
                                                "education.graduation_year"),
     (r"\buniversity\b|\bcollege\b|\binstitut",  "education.mca_institution"),
@@ -132,7 +134,7 @@ QUESTION_RULES: list[tuple[str, str]] = [
                                               "compensation.expected_text"),
 
     (r"\b(cgpa|gpa)\b|what.*(percentage|aggregate).*(marks|score)",
-                                              "education.mca_score"),
+                                              "education.bca_score"),
     (r"year of (passing|graduation)|graduation year",
                                               "education.graduation_year"),
     (r"highest (qualification|degree|level of education)",
@@ -275,7 +277,6 @@ def missing_required(bank: dict | None = None) -> list[str]:
     required = [
         ("identity.street_address", "postal address"),
         ("identity.postal_code", "PIN code"),
-        ("education.mca_score", "MCA CGPA/percentage"),
         ("education.bca_score", "BCA CGPA/percentage"),
         ("compensation.current_ctc_lpa", "current CTC"),
     ]
