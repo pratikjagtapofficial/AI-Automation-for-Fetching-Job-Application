@@ -1,63 +1,105 @@
-# PJ's profile — the single source of truth for matching and, later,
-# for the Validator whitelist and the Answer Bank.
+# PJ's profile — single source of truth for matching, the Validator
+# whitelist, and the Answer Bank.
 #
-# RULE: Nothing in this file may be invented. Fields marked `null` are
-# genuinely unknown and MUST be filled by PJ before Phase 2/3 use them.
-# The system asks in Telegram rather than guessing.
+# RULE: Nothing here may be invented. Fields marked `null` are genuinely
+# unknown and MUST be filled by PJ. The system asks in Telegram rather
+# than guessing.
+#
+# Source: Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf (parsed 2026-08-06)
 
 identity:
   full_name: Pratik Jagtap
   email: pratikjagtapofficial@gmail.com
-  phone: null              # TODO(PJ): needed for application forms
+  phone: "+91 9699504720"
   location: Pune, Maharashtra, India
-  address: null            # TODO(PJ): as it should appear on forms
-  linkedin: null           # TODO(PJ)
-  github: null             # TODO(PJ)
-  portfolio: null          # TODO(PJ): optional
+  address: null            # TODO(PJ): full postal address for forms
+  linkedin: https://www.linkedin.com/in/pratikdjagtap/
+  github: https://github.com/pratikjagtapofficial
+  portfolio: null
+
+headline: Agentic AI Engineer | GenAI Developer | LLMs, RAG & MCP
 
 current_role:
   title: AI Developer
   company: HireTalent
+  company_type: Staffing & Recruiting Firm
   location: Pune
-  # Quiet search: this employer and its clients are hard-blacklisted.
-  confidential_search: true
+  started: 2026-03
+  confidential_search: true   # quiet search — see blacklist
+
+experience:
+  # ~11 months professional as of Aug 2026. Not a fresher — this matters
+  # when a JD says "0-2 years": PJ sits comfortably inside that band.
+  total_months: 11
+  history:
+    - role: AI Developer
+      company: HireTalent
+      from: 2026-03
+      to: present
+    - role: Data Science & AI Consultant Intern
+      company: Rubixe
+      from: 2025-07
+      to: 2026-01
 
 education:
   - degree: MCA
-    institution: null      # TODO(PJ)
+    institution: Sinhgad Institute of Management, Pune
+    from: 2024-09
     completed: 2026-06
-    score: null            # TODO(PJ): CGPA or percentage
-  - degree: null           # TODO(PJ): bachelor's
-    institution: null
-    completed: null
-    score: null
+    score: null            # TODO(PJ): CGPA/percentage — forms ask
+  - degree: BCA
+    institution: Mugutrao Sahebrao Kakade College, Pune
+    from: 2021-07
+    completed: 2024-06
+    score: null            # TODO(PJ)
+
+certifications:
+  - IABAC Certified Data Scientist
+  - IABAC Artificial Intelligence Expert Certification
+  - AI Engineer Certification — DataMites Global Institute
 
 compensation:
-  current_ctc_lpa: null    # TODO(PJ): some forms ask
+  current_ctc_lpa: null    # TODO(PJ)
   expected_min_lpa: 4
   expected_max_lpa: 6
   notice_period_days: 30
-  earliest_joining: null   # derived from notice unless PJ overrides
+  earliest_joining: null
 
 # ─────────────────────────────────────────────────────────────────
 # SKILLS WHITELIST
-# The Validator (Phase 2) rejects any resume edit introducing a skill
-# that is not listed under `has`. This is a hard-coded gate, not an
-# LLM judgement call. `lacks` exists so gaps are surfaced honestly in
-# the call-prep card instead of being papered over.
+# The Validator rejects any resume edit introducing a skill not listed
+# under `has`. Hard-coded gate, not an LLM judgement call.
 # ─────────────────────────────────────────────────────────────────
 skills:
   has:
-    languages:      [Python]
-    genai:          [LangChain, RAG, MCP, prompt engineering, agentic AI, multi-agent systems]
-    tools:          [Claude Code]
-    data:           [vector databases]
-    backend:        [FastAPI, REST APIs]
+    agentic_genai:
+      [AI Agents, Multi-Agent Systems, Agentic AI, Model Context Protocol, MCP,
+       Agent-to-Agent Protocol, A2A, LangChain, LangGraph, RAG,
+       Retrieval-Augmented Generation, Prompt Engineering]
+    llm_platforms:
+      [Claude Code, Gemini, GPT, Large Language Models, LLMs]
+    programming:
+      [Python, SQL, FastAPI, Streamlit, REST API]
+    retrieval:
+      [Vector Databases, PostgreSQL, PageIndex, Semantic Search]
+    ml_ds:
+      [XGBoost, LSTM, Scikit-learn, NLP, Time-Series Forecasting,
+       Predictive Modeling, Feature Engineering]
+    vision:
+      [YOLO, Computer Vision]
+    cloud_infra:
+      # Real deployment experience — Agent Neo runs on Vultr.
+      [DigitalOcean, Vultr, Cloudflare, Git, GitHub]
+
+  # Skills held only lightly. Allowed on the resume, but the call-prep
+  # card warns PJ so he never oversells them in an interview.
+  shallow:
+    LangGraph: >-
+      Used lightly. Honest line: "I've worked with it a little — most of my
+      orchestration has been direct LangChain and MCP."
 
   lacks:
     # NEVER add these to a resume, cover letter, or screening answer.
-    # If a JD requires them, apply anyway and prepare an honest framing.
-    - LangGraph
     - CrewAI
     - AutoGen
     - Docker
@@ -65,19 +107,23 @@ skills:
     - AWS
     - Azure
     - GCP
+    - Terraform
 
-  # Honest framing the call-prep card offers when a JD wants something
-  # from `lacks`. Reviewed and owned by PJ — edit freely.
   gap_framing:
     default: >-
-      Not hands-on with this yet. I've shipped the application layer of
-      LLM systems end to end, and I pick up tooling quickly.
+      Not hands-on with this yet. I've shipped the application layer of LLM
+      systems end to end, and I pick up tooling quickly.
     Docker: >-
-      Haven't used it in production. I've built and deployed FastAPI
-      services, so the concepts are familiar and I'd ramp fast.
-    LangGraph: >-
-      I've built multi-agent orchestration directly with LangChain and
-      MCP rather than LangGraph — same problems, different tool.
+      Haven't used it in production. I've deployed FastAPI services to Vultr
+      and DigitalOcean, so deployment concepts are familiar — containers are
+      the piece I'd be ramping on.
+    AWS: >-
+      My deployment experience is DigitalOcean, Vultr and Cloudflare rather
+      than AWS. Same fundamentals — managed services, DNS, storage — and I'd
+      expect a short ramp.
+    Kubernetes: >-
+      No hands-on orchestration experience. I've run production services on
+      VPS infrastructure and would be learning K8s from the ground up.
 
 search:
   titles:
@@ -88,38 +134,40 @@ search:
     - GenAI Engineer
     - Generative AI Engineer
     - Machine Learning Engineer
+    - ML Engineer
     - LLM Engineer
     - Applied AI Engineer
+    - AI/ML Engineer
 
-  # Titles containing these are dropped even if experience range fits.
   exclude_titles:
     [Senior, Sr., Staff, Lead, Principal, Manager, Head, Director,
-     Architect, "II", "III", Founding]
+     Architect, "II", "III", Founding, VP, Chief]
 
   experience_years_max: 2
 
   locations:
-    - {name: Remote,     weight: 1.30}   # top preference
+    - {name: Remote,     weight: 1.30}
     - {name: Pune,       weight: 1.20}
     - {name: Bengaluru,  weight: 1.00}
     - {name: Hyderabad,  weight: 1.00}
     - {name: Noida,      weight: 0.95}
     - {name: Gurugram,   weight: 0.95}
-    - {name: India,      weight: 0.90}   # unspecified Indian location
+    - {name: India,      weight: 0.90}
 
   freshness_hours: 24
+
+  # Official postings only — company's own listing, not an agency repost.
+  official_only: true
 
 blacklist:
   companies:
     - HireTalent
-  # TODO(PJ): add HireTalent's clients — critical for a quiet search
-  client_companies: []
-  # Staffing/recruitment firms are skipped by keyword.
+  client_companies: []     # TODO(PJ): critical for the quiet search
   keywords:
     [staffing, recruitment, consultancy, manpower, talent solutions,
      hiring partner, rpo, headhunt]
 
 limits:
   applications_per_day: 20
-  strong_fit_threshold: 70    # >= this pings Telegram live
-  min_score_to_show: 40       # below this is dropped entirely
+  strong_fit_threshold: 70
+  min_score_to_show: 40
