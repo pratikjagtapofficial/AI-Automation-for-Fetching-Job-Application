@@ -178,14 +178,17 @@ education:
   locked: true
   items:
     # "to: 2026-06" previously read as an awarded degree. It is not
-    # awarded — coursework is complete, the final project is pending.
-    # Rendering it as complete would be a false claim on every
-    # application sent.
+    # awarded, so the status reads "Pursuing" — that is the honest and
+    # load-bearing part, and it must not be changed back to a date.
+    #
+    # The reason it is pending is deliberately NOT printed. A resume
+    # states status, not circumstances, and "Pursuing" already tells a
+    # reader the degree is not conferred. PJ answers the why in
+    # conversation; his wording is in answers.yml as mca_explanation.
     - degree: Master of Computer Applications (MCA)
       institution: Sinhgad Institute of Management, Pune
       from: 2024-09
       to: Pursuing
-      note: Coursework completed; degree pending final project submission
       score: null
     - degree: Bachelor of Computer Applications (BCA)
       institution: Mugutrao Sahebrao Kakade College, Pune
