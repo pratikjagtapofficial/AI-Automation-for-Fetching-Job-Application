@@ -1,0 +1,15 @@
+name = "job-scout-bot"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+# Free plan. No card required, 100k requests/day — a Telegram bot for one
+# person uses a rounding error of that.
+workers_dev = true
+
+# Secrets are NOT set here. They go in via:
+#   wrangler secret put BOT_TOKEN
+#   wrangler secret put CHAT_ID
+#   wrangler secret put WEBHOOK_SECRET
+#   wrangler secret put GH_TOKEN
+#   wrangler secret put GH_REPO
+# Putting them in this file would commit them to the repo.

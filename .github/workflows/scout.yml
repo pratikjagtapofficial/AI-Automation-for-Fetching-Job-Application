@@ -63,6 +63,9 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          # Without this the tailor silently fails on every scheduled run
+          # and PJ gets untailored cards with no obvious cause.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python -m src.scout
 

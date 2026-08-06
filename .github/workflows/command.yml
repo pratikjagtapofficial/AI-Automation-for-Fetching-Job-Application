@@ -1,0 +1,82 @@
+name: Telegram Command
+
+# Fired by the Cloudflare Worker when PJ sends a command. The Worker
+# acknowledges instantly; this does the work and replies.
+on:
+  repository_dispatch:
+    types: [telegram-command]
+
+# Commands are cheap but Actions bills a minimum of one minute per run.
+# Queueing rather than cancelling means two commands sent together both
+# get answered.
+concurrency:
+  group: telegram-command
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  command:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run command
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python -m src.command_runner "${{ github.event.client_payload.command }}"
+
+      - name: Persist any Answer Bank change
+        # /answer writes PJ's reply into config/answers.yml. Without
+        # committing it back, the runner is discarded and he would be
+        # asked the same question again on the next scan.
+        run: |
+          git config user.name  "job-scout[bot]"
+          git config user.email "job-scout@users.noreply.github.com"
+          git add config/answers.yml data/jobs.db 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "answers: via Telegram"
+          git pull --rebase --autostash origin main || true
+          git push || true
+
+  # A /scan command runs the real scan as a separate job so the command
+  # reply is not blocked behind a multi-minute pipeline.
+  scan:
+    if: startsWith(github.event.client_payload.command, '/scan')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m src.scout
+      - name: Persist tracker
+        run: |
+          git config user.name  "job-scout[bot]"
+          git config user.email "job-scout@users.noreply.github.com"
+          git add data/jobs.db
+          git diff --staged --quiet || git commit -m "tracker: manual scan"
+          git pull --rebase --autostash origin main || true
+          git push || true
