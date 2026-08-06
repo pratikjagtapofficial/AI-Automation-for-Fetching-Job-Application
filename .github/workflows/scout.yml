@@ -1,0 +1,90 @@
+name: Job Scout
+
+# Runs on GitHub's infrastructure — PJ's laptop is irrelevant once this
+# is pushed. Times are UTC; IST is UTC+5:30.
+#   20:30 UTC = 02:00 IST
+#   08:30 UTC = 14:00 IST
+on:
+  schedule:
+    - cron: "30 20 * * *"   # 02:00 IST
+    - cron: "30 8 * * *"    # 14:00 IST
+  workflow_dispatch:         # manual "Run workflow" button
+    inputs:
+      dry_run:
+        description: "Scan and log, but send nothing to Telegram"
+        type: boolean
+        default: false
+
+# A slow run must never overlap the next scheduled one.
+concurrency:
+  group: job-scout
+  cancel-in-progress: false
+
+permissions:
+  contents: write            # to commit the updated tracker DB
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20      # guard against a hung request burning minutes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scout
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python -m src.scout
+
+      - name: Persist tracker
+        # The SQLite file is the dedupe memory. Without committing it back,
+        # every run would treat every posting as new and re-notify.
+        run: |
+          git config user.name  "job-scout[bot]"
+          git config user.email "job-scout@users.noreply.github.com"
+          git add data/jobs.db
+          git diff --staged --quiet || git commit -m "tracker: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # A silent failure is the dangerous one — PJ would assume the
+        # pipeline is running while it has been dead for weeks.
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode=HTML \
+            -d text="🚨 <b>Job scout failed</b>%0ARun: ${{ github.run_id }}%0A<a href='https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View logs →</a>"
+
+  # GitHub disables scheduled workflows after 60 days of repository
+  # inactivity. This weekly no-op commit keeps the schedule alive.
+  keepalive:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Touch heartbeat weekly
+        run: |
+          if [ "$(date -u +%u)" = "1" ]; then
+            git config user.name  "job-scout[bot]"
+            git config user.email "job-scout@users.noreply.github.com"
+            date -u > .keepalive
+            git add .keepalive
+            git diff --staged --quiet || git commit -m "chore: keepalive"
+            git push
+          fi
