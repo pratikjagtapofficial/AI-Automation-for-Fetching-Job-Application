@@ -21,6 +21,7 @@ from pathlib import Path
 import yaml
 
 from . import apply as applier
+from . import callprep
 from . import hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
@@ -87,6 +88,8 @@ def _cap_per_company(jobs: list, profile: dict) -> list:
 def main() -> int:
     dry = _truthy(os.environ.get("DRY_RUN"))
     profile, targets, resume = load_cfg()
+    from .answers import load as _load_bank
+    answer_bank = _load_bank()
     errors: list[str] = []
     all_jobs = []
 
@@ -289,6 +292,18 @@ def main() -> int:
                     unanswered=rep.unanswered,
                     screenshot=str(rep.screenshot) if rep.screenshot else None,
                     supported=True)
+                # Freeze what the employer actually received. Cannot be
+                # reconstructed later: postings get taken down and the
+                # tailored PDF is regenerated on demand.
+                callprep.snapshot(
+                    conn, key,
+                    jd_text=j.description or "",
+                    answers=rep.filled,
+                    ctc_quoted=(answer_bank.get("compensation", {})
+                                .get("expected_text")),
+                    resume_path=str(pdf) if pdf else None,
+                )
+
                 tg.send(applier.report_card(rep), preview=False)
                 if rep.screenshot:
                     tg.send_document(

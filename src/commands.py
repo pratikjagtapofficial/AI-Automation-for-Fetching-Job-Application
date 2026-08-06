@@ -14,10 +14,12 @@ from __future__ import annotations
 import html
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
+import yaml
 
-from . import store
+from . import callprep, store
 
 HELP = """<b>Commands</b>
 
@@ -28,6 +30,9 @@ HELP = """<b>Commands</b>
 /brief &lt;company&gt; — what did I send them?
 /diff &lt;company&gt; — full resume changes for that job
 /resume &lt;company&gt; — send the tailored PDF for that job
+/jd &lt;company&gt; — the job description as it was when you applied
+/applied &lt;company&gt; — mark that you actually submitted it
+/note &lt;company&gt; &lt;text&gt; — save a note after a call
 /questions — form questions waiting on you
 /answer &lt;n&gt; &lt;your answer&gt; — answer question n
 /help — this message
@@ -257,28 +262,57 @@ def handle(text: str) -> str:
                     out += ["", f"⚠️ {e(w)}"]
                 return "\n".join(out)
 
+            if cmd == "applied":
+                if not arg:
+                    return "Usage: <code>/applied &lt;company&gt;</code>"
+                row = callprep.mark_applied(conn, arg)
+                if not row:
+                    return f"No record for <b>{e(arg)}</b>."
+                return (f"✅ Marked <b>{e(row['company'])}</b> — "
+                        f"{e(row['title'])} as applied.\n\n"
+                        f"<i>If they call, send me their name and you'll get "
+                        f"the brief.</i>")
+
+            if cmd == "note":
+                bits = arg.split(maxsplit=1)
+                if len(bits) < 2:
+                    return ("Usage: <code>/note &lt;company&gt; &lt;your "
+                            "note&gt;</code>")
+                if callprep.add_note(conn, bits[0], bits[1]):
+                    return (f"📝 Noted against <b>{e(bits[0])}</b>.\n"
+                            f"<i>It appears on the brief next time.</i>")
+                return f"No record for <b>{e(bits[0])}</b>."
+
+            if cmd == "jd":
+                if not arg:
+                    return "Usage: <code>/jd &lt;company&gt;</code>"
+                row = callprep.lookup(conn, arg)
+                if not row:
+                    return f"No record for <b>{e(arg)}</b>."
+                jd = callprep.jd_to_text(
+                    row["jd_snapshot"] or row["description"] or "")
+                if not jd.strip():
+                    return (f"No JD stored for <b>{e(row['company'])}</b>.\n"
+                            f'<a href="{e(row["url"])}">Try the posting →</a>')
+                head = (f"📋 <b>{e(row['company'])}</b> — {e(row['title'])}\n"
+                        f"<i>Snapshot taken when you applied; the live "
+                        f"posting may be gone.</i>\n\n")
+                return head + e(jd[:3200])
+
             if cmd == "brief" or not text.startswith("/"):
                 name = arg if cmd == "brief" else text
                 if not name:
                     return "Usage: <code>/brief &lt;company&gt;</code>"
-                rows = store.find_by_company(conn, name)
-                if not rows:
+                row = callprep.lookup(conn, name)
+                if not row:
                     return (f"No record for <b>{e(name)}</b>.\n"
                             "<i>Either you haven't applied there, or it came "
                             "in before tracking started.</i>")
-                out = [f"📞 <b>{e(rows[0]['company'])}</b>", ""]
-                for r in rows[:3]:
-                    out.append(f"<b>{e(r['title'])}</b> · {e(r['location'] or '')}")
-                    out.append(f"  status: <i>{e(r['status'])}</i> · "
-                               f"seen {_age(r['first_seen'])}")
-                    if r["ctc_quoted"]:
-                        out.append(f"  💰 you quoted: <b>{e(r['ctc_quoted'])}</b>")
-                    if r["applied_at"]:
-                        out.append(f"  applied {_age(r['applied_at'])}")
-                    out.append(f"  <a href=\"{e(r['url'])}\">posting →</a>")
-                    out.append("")
-                # Phase 5 fills resume version + submitted answers here.
-                return "\n".join(out)
+                tailored = store.get_tailoring(conn, row["key"])
+                profile = yaml.safe_load(
+                    (Path(__file__).resolve().parents[1] / "config" /
+                     "profile.yml").read_text(encoding="utf-8"))
+                return callprep.build(row, profile, tailored)
 
             return (f"Unknown command: <code>{e(cmd)}</code>\n\n{HELP}")
 
