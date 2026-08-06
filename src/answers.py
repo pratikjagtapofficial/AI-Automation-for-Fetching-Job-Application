@@ -222,10 +222,26 @@ def _skill_years(question: str, bank: dict):
 
 
 def _learned(question: str, bank: dict) -> Answer | None:
+    """Match a previously-answered question.
+
+    Exact normalised equality, plus a prefix rule: ATS forms render the
+    same label at different lengths between pages and runs (truncated in
+    a list view, full on the form), and a stored answer that stops
+    matching would silently re-ask PJ something he already answered.
+    A 60-character shared prefix is long enough to be unambiguous.
+    """
     qn = _norm(question)
+    if not qn:
+        return None
     for item in bank.get("learned") or []:
-        if _norm(str(item.get("question", ""))) == qn:
+        sn = _norm(str(item.get("question", "")))
+        if not sn:
+            continue
+        if sn == qn:
             return Answer(str(item.get("answer", "")), "learned")
+        shorter, longer = sorted((sn, qn), key=len)
+        if len(shorter) >= 60 and longer.startswith(shorter):
+            return Answer(str(item.get("answer", "")), "learned(prefix)")
     return None
 
 

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import yaml
 
+from . import apply as applier
 from . import hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
@@ -250,14 +251,57 @@ def main() -> int:
             time.sleep(4)
 
         # Strong fits get a full card with the resume diff attached, plus
-        # the tailored PDF itself.
+        # the tailored PDF itself, plus a prepared application where the
+        # form is publicly fillable.
+        prep_budget = profile["limits"].get("max_prepare_per_run", 4)
+        prepared = 0
+
         for j in strong:
-            res = tailored.get(store.job_key(j))
+            key = store.job_key(j)
+            res = tailored.get(key)
             tg.send(tailored_card(j, res), preview=False)
+
             pdf = getattr(res, "_pdf", None) if res else None
             if pdf:
                 tg.send_document(
                     pdf, caption=f"Tailored for <b>{j.company}</b> — {j.title}")
+
+            if not profile["limits"].get("prepare_applications", True):
+                continue
+
+            if not applier.is_supported(j.url):
+                # Login-gated boards are handed over rather than
+                # half-prepared; PJ's credentials are never entered.
+                store.save_preparation(conn, key, filled=0, unanswered=[],
+                                       screenshot=None, supported=False)
+                continue
+
+            if prepared >= prep_budget:
+                continue
+
+            try:
+                rep = applier.prepare_sync(
+                    j.url, j.company, j.title,
+                    resume_pdf=pdf or (ROOT / "output" / "base_resume.pdf"))
+                prepared += 1
+                store.save_preparation(
+                    conn, key, filled=len(rep.filled),
+                    unanswered=rep.unanswered,
+                    screenshot=str(rep.screenshot) if rep.screenshot else None,
+                    supported=True)
+                tg.send(applier.report_card(rep), preview=False)
+                if rep.screenshot:
+                    tg.send_document(
+                        rep.screenshot,
+                        caption=(f"Filled form — <b>{j.company}</b>. "
+                                 f"<b>Nothing submitted.</b>"))
+                if rep.error:
+                    errors.append(f"prepare[{j.company}]: {rep.error}")
+                print(f"  prepared: {j.company} — {len(rep.filled)} filled, "
+                      f"{len(rep.required_unanswered)} need PJ")
+            except Exception as ex:
+                errors.append(f"prepare[{j.company}]: {type(ex).__name__}")
+                print(f"  prepare ERROR: {j.company} — {ex}")
 
         # Everything else batches, with a marker showing which were
         # tailored so PJ knows a /diff is available.

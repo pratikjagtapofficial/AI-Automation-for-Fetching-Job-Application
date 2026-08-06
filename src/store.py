@@ -99,6 +99,11 @@ _MIGRATIONS = {
     "jobs": {
         "tailored_json": "TEXT",
         "tailored_at": "TEXT",
+        "prepared_at": "TEXT",
+        "prep_filled": "INTEGER",
+        "prep_unanswered": "TEXT",
+        "prep_screenshot": "TEXT",
+        "prep_supported": "INTEGER",
     },
 }
 
@@ -196,6 +201,42 @@ def get_tailoring(conn: sqlite3.Connection, key: str) -> dict | None:
         return json.loads(row["tailored_json"])
     except Exception:
         return None
+
+
+def save_preparation(conn: sqlite3.Connection, key: str, *, filled: int,
+                     unanswered: list[str], screenshot: str | None,
+                     supported: bool) -> bool:
+    cur = conn.execute(
+        "UPDATE jobs SET prepared_at=?, prep_filled=?, prep_unanswered=?, "
+        "prep_screenshot=?, prep_supported=? WHERE key=?",
+        (_now(), filled, json.dumps(unanswered, ensure_ascii=False),
+         screenshot, 1 if supported else 0, key),
+    )
+    return cur.rowcount > 0
+
+
+def open_questions(conn: sqlite3.Connection, limit: int = 20) -> list[tuple]:
+    """Unanswered form questions across prepared applications.
+
+    Backs /questions and /answer, so a question PJ answers once is stored
+    in the Answer Bank and never asked again.
+    """
+    rows = conn.execute(
+        "SELECT company, title, prep_unanswered FROM jobs "
+        "WHERE prep_unanswered IS NOT NULL AND prep_unanswered != '[]' "
+        "ORDER BY prepared_at DESC LIMIT ?", (limit,)).fetchall()
+    out, seen = [], set()
+    for r in rows:
+        try:
+            qs = json.loads(r["prep_unanswered"]) or []
+        except Exception:
+            continue
+        for q in qs:
+            k = q.strip().lower()
+            if k and k not in seen:
+                seen.add(k)
+                out.append((q, r["company"], r["title"]))
+    return out
 
 
 def record_run(conn: sqlite3.Connection, fetched: int, relevant: int,

@@ -64,6 +64,33 @@ _FIELD_JS = """() => {
 }"""
 
 
+# Forms that are publicly fillable without an account. Everything else —
+# Naukri, Hirist, Instahyre, LinkedIn — puts the application behind a
+# login, and PJ's credentials are never entered by this system. Those get
+# handed over as a link instead of half-prepared.
+SUPPORTED_HOSTS = (
+    "greenhouse.io", "job-boards.greenhouse.io", "boards.greenhouse.io",
+    "lever.co", "jobs.lever.co",
+    "ashbyhq.com", "jobs.ashbyhq.com",
+    "smartrecruiters.com", "jobs.smartrecruiters.com",
+)
+
+
+def is_supported(url: str) -> bool:
+    u = (url or "").lower()
+    return any(h in u for h in SUPPORTED_HOSTS)
+
+
+def why_unsupported(url: str) -> str:
+    u = (url or "").lower()
+    for host, name in (("naukri", "Naukri"), ("hirist", "Hirist"),
+                       ("instahyre", "Instahyre"), ("linkedin", "LinkedIn"),
+                       ("indeed", "Indeed"), ("wellfound", "Wellfound")):
+        if host in u:
+            return f"{name} requires a signed-in session to apply"
+    return "not a directly fillable application form"
+
+
 @dataclass
 class FillReport:
     url: str

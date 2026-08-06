@@ -212,3 +212,10 @@ limits:
   # Ceiling on tailoring calls per run. Guards the Gemini free tier if a
   # scan ever returns an unusually large batch.
   max_tailor_per_run: 12
+
+  # Phase 3. Applications are PREPARED only — filled, screenshotted and
+  # handed to PJ. Nothing is ever submitted by the system.
+  prepare_applications: true
+  # Each preparation drives a real browser (~25s), so this bounds both
+  # runtime and Actions minutes.
+  max_prepare_per_run: 4

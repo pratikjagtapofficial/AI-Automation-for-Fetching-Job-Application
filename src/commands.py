@@ -28,6 +28,8 @@ HELP = """<b>Commands</b>
 /brief &lt;company&gt; — what did I send them?
 /diff &lt;company&gt; — full resume changes for that job
 /resume &lt;company&gt; — send the tailored PDF for that job
+/questions — form questions waiting on you
+/answer &lt;n&gt; &lt;your answer&gt; — answer question n
 /help — this message
 
 You can also just type a company name to look it up."""
@@ -194,6 +196,39 @@ def handle(text: str) -> str:
                 # here means the transport could not send documents.
                 return ("<i>Preparing the PDF…</i> if nothing arrives, the "
                         "sender does not support file upload.")
+
+            if cmd == "questions":
+                qs = store.open_questions(conn)
+                if not qs:
+                    return ("✅ No open questions.\n"
+                            "<i>Every field the forms asked for was already "
+                            "in your Answer Bank.</i>")
+                out = [f"❓ <b>{len(qs)} question(s) need you</b>",
+                       "<i>Answer once and it is saved forever.</i>", ""]
+                for i, (q, comp, _t) in enumerate(qs[:12], 1):
+                    out.append(f"<b>{i}.</b> {e(q[:150])}\n"
+                               f"     <i>from {e(comp)}</i>")
+                out += ["", "Reply: <code>/answer 1 Yes</code>"]
+                return "\n".join(out)
+
+            if cmd == "answer":
+                from .answers import remember
+                bits = arg.split(maxsplit=1)
+                if len(bits) < 2 or not bits[0].isdigit():
+                    return ("Usage: <code>/answer &lt;number&gt; &lt;your "
+                            "answer&gt;</code>\nSee <code>/questions</code>.")
+                idx, value = int(bits[0]), bits[1].strip()
+                qs = store.open_questions(conn)
+                if not (1 <= idx <= len(qs)):
+                    return f"No question {idx}. See <code>/questions</code>."
+                question = qs[idx - 1][0]
+                try:
+                    remember(question, value)
+                except Exception as ex:
+                    return f"⚠️ Could not save: {e(type(ex).__name__)}"
+                return (f"✅ Saved.\n\n<b>Q:</b> {e(question[:160])}\n"
+                        f"<b>A:</b> {e(value[:160])}\n\n"
+                        "<i>Filled automatically from now on.</i>")
 
             if cmd == "diff":
                 if not arg:

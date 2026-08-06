@@ -41,6 +41,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install Chromium
+        # Needed by the application filler. --with-deps pulls the system
+        # libraries the Ubuntu runner does not ship by default.
+        run: python -m playwright install --with-deps chromium
+
       - name: Answer pending Telegram commands
         # Commands sent between scheduled runs are answered here. Not
         # instant -- a webhook is the fix for that -- but it means /status
