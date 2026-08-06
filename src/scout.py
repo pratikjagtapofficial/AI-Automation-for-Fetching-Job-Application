@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from . import naukri, store
+from . import hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
 from .scorer import score_all
@@ -60,6 +60,25 @@ def _keyword_set() -> list[str]:
     if override and override.isdigit():
         return NAUKRI_KEYWORD_SETS[int(override) % len(NAUKRI_KEYWORD_SETS)]
     return NAUKRI_KEYWORD_SETS[1] if 6 <= hour < 14 else NAUKRI_KEYWORD_SETS[0]
+
+
+def _cap_per_company(jobs: list, profile: dict) -> list:
+    """Keep at most N roles per company, highest-scoring first.
+
+    One employer posting a dozen near-identical variants (Deutsche Telekom
+    put out 8+ AI Engineer listings in a single scan) would otherwise fill
+    the whole notification with one company and bury everything else.
+    """
+    cap = profile["limits"].get("max_per_company", 3)
+    seen: dict[str, int] = {}
+    out = []
+    for j in sorted(jobs, key=lambda x: -x.score):
+        k = j.company.strip().lower()
+        if seen.get(k, 0) >= cap:
+            continue
+        seen[k] = seen.get(k, 0) + 1
+        out.append(j)
+    return out
 
 
 def main() -> int:
@@ -106,27 +125,55 @@ def main() -> int:
         errors.append(f"naukri: {type(e).__name__}")
         print(f"naukri          : FAILED {e}")
 
+    # ── 3. Hirist (free JSON API, no browser, no credits) ──────────
+    try:
+        h_jobs, h_errs = hirist.fetch(
+            ["AI Engineer", "AI Developer", "GenAI Engineer",
+             "Machine Learning Engineer"],
+            official_only=profile["search"].get("official_only", True),
+        )
+        all_jobs += h_jobs
+        errors += h_errs
+        print(f"hirist          : {len(h_jobs)} postings")
+    except Exception as e:
+        errors.append(f"hirist: {type(e).__name__}")
+        print(f"hirist          : FAILED {e}")
+
+    # ── 4. Instahyre (free JSON API; publishes no posting dates) ───
+    try:
+        i_jobs, i_errs = instahyre.fetch()
+        all_jobs += i_jobs
+        errors += i_errs
+        print(f"instahyre       : {len(i_jobs)} postings")
+    except Exception as e:
+        errors.append(f"instahyre: {type(e).__name__}")
+        print(f"instahyre       : FAILED {e}")
+
     print(f"total fetched   : {len(all_jobs)}")
 
-    # ── 3. Score and filter ────────────────────────────────────────
+    # ── 5. Score and filter ────────────────────────────────────────
     relevant = score_all(all_jobs, profile)
     print(f"relevant        : {len(relevant)}")
 
-    # ── 4. Dedupe against everything seen before ───────────────────
+    # ── 6. Dedupe against everything seen before ───────────────────
     with store.connect() as conn:
         fresh = store.filter_new(conn, relevant)
         print(f"new (not seen)  : {len(fresh)}")
-        store.save(conn, fresh)
 
         if dry:
-            print("DRY_RUN — no Telegram messages sent")
-            for j in fresh:
+            # Deliberately does NOT save. Persisting here would consume the
+            # "new" state, so the next real run would find nothing fresh and
+            # notify about none of it — a dry run must leave no trace.
+            print("DRY_RUN — nothing saved, nothing sent")
+            for j in _cap_per_company(fresh, profile):
                 print(f"  [{j.score:>3}] {j.company} — {j.title} ({j.location})")
             _report_errors(errors)
-            store.record_run(conn, len(all_jobs), len(relevant), 0, errors)
             return 0
 
-        # ── 5. Tailor strong fits, then notify ─────────────────────
+        fresh = _cap_per_company(fresh, profile)
+        store.save(conn, fresh)
+
+        # ── 7. Tailor, then notify ─────────────────────
         tg = Telegram()
         threshold = profile["limits"]["strong_fit_threshold"]
         strong = [j for j in fresh if j.score >= threshold]
@@ -137,7 +184,9 @@ def main() -> int:
         # most matches untailored.
         tailor_at = profile["limits"].get("tailor_threshold",
                                           profile["limits"]["min_score_to_show"])
-        to_tailor = [j for j in fresh if j.score >= tailor_at]
+        cap = profile["limits"].get("max_tailor_per_run", 12)
+        to_tailor = sorted([j for j in fresh if j.score >= tailor_at],
+                           key=lambda x: -x.score)[:cap]
         tailored: dict[str, object] = {}
 
         for j in to_tailor:

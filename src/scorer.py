@@ -153,14 +153,25 @@ def score_job(job: Job, cfg: dict, now: datetime | None = None) -> Job:
         job.score, job.reasons = 0, [f"location out of scope: {job.location}"]
         return job
 
-    # Freshness. A missing timestamp is a reject, never a guess.
+    # Freshness. A missing timestamp is never guessed at.
+    #
+    # Some sources publish no posting date at all (Instahyre exposes none
+    # anywhere in its API). Rejecting those outright would discard a whole
+    # source; inventing a date would be worse. So listed sources are
+    # exempted from the age check and carry an explicit "date unknown"
+    # marker instead, with dedupe ensuring each is still shown only once.
+    age = None
     if job.posted_at is None:
-        job.score, job.reasons = 0, ["no verifiable posting timestamp"]
-        return job
-    age = now - job.posted_at
-    if age > timedelta(hours=cfg["search"]["freshness_hours"]):
-        job.score, job.reasons = 0, [f"older than cutoff ({age.days}d)"]
-        return job
+        exempt = cfg["search"].get("undated_sources") or []
+        if job.source not in exempt:
+            job.score, job.reasons = 0, ["no verifiable posting timestamp"]
+            return job
+        reasons.append("⚠ source publishes no posting date")
+    else:
+        age = now - job.posted_at
+        if age > timedelta(hours=cfg["search"]["freshness_hours"]):
+            job.score, job.reasons = 0, [f"older than cutoff ({age.days}d)"]
+            return job
 
     min_yrs = _min_years_required(job.description)
     if min_yrs is not None and min_yrs > cfg["search"]["experience_years_max"]:
@@ -213,8 +224,8 @@ def score_job(job: Job, cfg: dict, now: datetime | None = None) -> Job:
     if min_yrs is not None:
         reasons.append(f"asks {min_yrs}+ yrs")
 
-    # Fresher postings rank higher.
-    if age < timedelta(hours=6):
+    # Fresher postings rank higher, where a date exists at all.
+    if age is not None and age < timedelta(hours=6):
         score += 5
         reasons.append("posted in last 6h")
 
@@ -227,4 +238,7 @@ def score_all(jobs: list[Job], cfg: dict) -> list[Job]:
     now = datetime.now(timezone.utc)
     scored = [score_job(j, cfg, now) for j in jobs]
     keep = [j for j in scored if j.score >= cfg["limits"]["min_score_to_show"]]
-    return sorted(keep, key=lambda j: (-j.score, j.posted_at or datetime.min))
+    # datetime.min is naive and cannot be compared against the aware
+    # timestamps every dated source produces; undated sources sort last.
+    oldest = datetime.min.replace(tzinfo=timezone.utc)
+    return sorted(keep, key=lambda j: (-j.score, j.posted_at or oldest))

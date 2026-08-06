@@ -158,18 +158,34 @@ search:
     - {name: Gurugram,   weight: 0.95}
     - {name: India,      weight: 0.90}
 
-  freshness_hours: 24
+  # Widened from 24h. That cutoff came from the Cowork task, which had no
+  # persistent memory and re-scanned fresh each run, so a short window was
+  # how it avoided re-showing the same jobs. This pipeline dedupes against
+  # the tracker instead, so the window no longer has that job to do — and
+  # at 24h it was discarding most of what the sources returned (Hirist:
+  # 1 of 328 passed at 24h, 3 at 168h). A role posted five days ago that
+  # PJ has not seen is still worth applying to.
+  freshness_hours: 168
 
   # Official postings only — company's own listing, not an agency repost.
   official_only: true
+
+  # Sources that publish no posting date at all. These skip the freshness
+  # check rather than being dropped, and are labelled "date unknown" — a
+  # date is never invented for them. Dedupe still shows each job once.
+  undated_sources: [instahyre]
 
 blacklist:
   companies:
     - HireTalent
   client_companies: []     # TODO(PJ): critical for the quiet search
   keywords:
-    [staffing, recruitment, consultancy, manpower, talent solutions,
-     hiring partner, rpo, headhunt]
+    # Substring-matched against the company name. "Telomere Consulting"
+    # slipped through when only "consultancy" was listed, so stems are
+    # used rather than exact words.
+    [staffing, recruit, consultanc, consulting, consultants, manpower,
+     talent solutions, talent acquisition, hiring partner, rpo, headhunt,
+     placement, hr services, hr solutions, outsourcing, resourcing]
 
 limits:
   applications_per_day: 20
@@ -182,3 +198,12 @@ limits:
   # defeats the point. Volume is 2-5 jobs/run, so the Gemini free tier
   # absorbs this comfortably.
   tailor_threshold: 40
+
+  # Cap roles shown per employer per run. One company posting many
+  # near-identical variants (Deutsche Telekom: 8+ AI Engineer listings in
+  # a single scan) would otherwise crowd out every other match.
+  max_per_company: 3
+
+  # Ceiling on tailoring calls per run. Guards the Gemini free tier if a
+  # scan ever returns an unusually large batch.
+  max_tailor_per_run: 12
