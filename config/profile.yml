@@ -141,7 +141,11 @@ search:
 
   exclude_titles:
     [Senior, Sr., Staff, Lead, Principal, Manager, Head, Director,
-     Architect, "II", "III", Founding, VP, Chief]
+     Architect, "II", "III", Founding, VP, Chief,
+     # Not employment. PJ is employed and looking for a full-time move;
+     # internships stay allowed, freelance/contract gigs do not.
+     Freelancer, Freelance, Contractor, Part-time, Trainer, Faculty,
+     Professor, Instructor]
 
   experience_years_max: 2
 
@@ -169,5 +173,12 @@ blacklist:
 
 limits:
   applications_per_day: 20
-  strong_fit_threshold: 70
-  min_score_to_show: 40
+  strong_fit_threshold: 70    # >= this gets a live ping rather than the digest
+  min_score_to_show: 40       # below this is dropped entirely
+
+  # Tailoring runs for anything at or above this. Set to match
+  # min_score_to_show because observed scores cluster at 50-75: gating
+  # tailoring at 70 meant most matches were never tailored at all, which
+  # defeats the point. Volume is 2-5 jobs/run, so the Gemini free tier
+  # absorbs this comfortably.
+  tailor_threshold: 40

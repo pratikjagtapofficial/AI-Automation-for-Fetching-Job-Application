@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     decided_at    TEXT,
     applied_at    TEXT,
 
+    -- Tailoring output, kept so the approval card can be re-shown and so
+    -- call-prep can answer "which version of my resume do they have?"
+    tailored_json TEXT,
+    tailored_at   TEXT,
+
     -- Call-prep snapshot, populated at submit time (Phase 5)
     resume_path   TEXT,
     answers_json  TEXT,
@@ -87,6 +92,27 @@ def job_key(job: Job) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:20]
 
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS is a
+# no-op on an existing table, so new columns must be added explicitly or
+# the committed DB from an earlier run would break every query.
+_MIGRATIONS = {
+    "jobs": {
+        "tailored_json": "TEXT",
+        "tailored_at": "TEXT",
+    },
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _MIGRATIONS.items():
+        existing = {
+            r["name"] for r in conn.execute(f"PRAGMA table_info({table})")
+        }
+        for col, decl in columns.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+
 @contextmanager
 def connect(path: Path | None = None):
     p = Path(path or DB_PATH)
@@ -95,6 +121,7 @@ def connect(path: Path | None = None):
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         yield conn
         conn.commit()
     finally:
@@ -143,6 +170,32 @@ def mark_notified(conn: sqlite3.Connection, jobs: list[Job]) -> None:
         "UPDATE jobs SET notified_at=? WHERE key=?",
         [(ts, job_key(j)) for j in jobs],
     )
+
+
+def save_tailoring(conn: sqlite3.Connection, key: str, payload: dict) -> bool:
+    """Returns False if no row matched.
+
+    An UPDATE against a missing key is a silent no-op in SQLite, which
+    previously meant tailoring could be computed, sent to Telegram, and
+    then lost with nothing indicating a problem. Callers must check.
+    """
+    cur = conn.execute(
+        "UPDATE jobs SET tailored_json=?, tailored_at=? WHERE key=?",
+        (json.dumps(payload, ensure_ascii=False), _now(), key),
+    )
+    return cur.rowcount > 0
+
+
+def get_tailoring(conn: sqlite3.Connection, key: str) -> dict | None:
+    row = conn.execute(
+        "SELECT tailored_json FROM jobs WHERE key=?", (key,)
+    ).fetchone()
+    if not row or not row["tailored_json"]:
+        return None
+    try:
+        return json.loads(row["tailored_json"])
+    except Exception:
+        return None
 
 
 def record_run(conn: sqlite3.Connection, fetched: int, relevant: int,

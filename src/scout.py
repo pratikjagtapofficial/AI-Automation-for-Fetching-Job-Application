@@ -14,33 +14,57 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 
 import yaml
 
 from . import naukri, store
-from .notify import Telegram, digest, run_summary, strong_fit_card
+from .notify import (Telegram, digest, run_summary, strong_fit_card,
+                     tailored_card)
 from .scorer import score_all
+from .tailor import tailor
 from .sources import fetch_all
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_cfg() -> tuple[dict, dict]:
+def load_cfg() -> tuple[dict, dict, dict]:
     profile = yaml.safe_load(
         (ROOT / "config" / "profile.yml").read_text(encoding="utf-8"))
     targets = yaml.safe_load(
         (ROOT / "config" / "targets.yml").read_text(encoding="utf-8"))
-    return profile, targets
+    resume = yaml.safe_load(
+        (ROOT / "config" / "resume.yml").read_text(encoding="utf-8"))
+    return profile, targets, resume
 
 
 def _truthy(v: str | None) -> bool:
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
 
+# Rotated across runs to double keyword coverage at unchanged cost.
+NAUKRI_KEYWORD_SETS = [
+    ["AI Engineer", "AI Developer"],                    # 02:00 IST run
+    ["GenAI Engineer", "Machine Learning Engineer"],    # 14:00 IST run
+]
+
+
+def _keyword_set() -> list[str]:
+    """Alternate on UTC hour. The 02:00 IST run is 20:30 UTC (hour 20),
+    the 14:00 IST run is 08:30 UTC (hour 8); anything else (a manual or
+    dispatched run) falls back to the primary set."""
+    from datetime import datetime, timezone
+    hour = datetime.now(timezone.utc).hour
+    override = os.environ.get("NAUKRI_KEYWORD_SET")
+    if override and override.isdigit():
+        return NAUKRI_KEYWORD_SETS[int(override) % len(NAUKRI_KEYWORD_SETS)]
+    return NAUKRI_KEYWORD_SETS[1] if 6 <= hour < 14 else NAUKRI_KEYWORD_SETS[0]
+
+
 def main() -> int:
     dry = _truthy(os.environ.get("DRY_RUN"))
-    profile, targets = load_cfg()
+    profile, targets, resume = load_cfg()
     errors: list[str] = []
     all_jobs = []
 
@@ -57,9 +81,19 @@ def main() -> int:
         errors.append(f"ats: {type(e).__name__}")
         print(f"ats boards      : FAILED {e}")
 
-    # ── 2. Naukri via Apify (metered — keep the search matrix small) ─
-    kw = ["AI Engineer", "AI Developer"]
+    # ── 2. Naukri via Apify (metered) ──────────────────────────────
+    # Each keyword is one actor run at ~$0.021. Location stays "india":
+    # Naukri's national search already spans every target city, so adding
+    # cities multiplies cost for zero extra coverage.
+    #
+    # Keyword sets ALTERNATE between runs rather than all firing each
+    # time. Four keywords twice daily would cost ~$5.04/mo and blow the
+    # free tier on its own; rotating two per run covers all four daily at
+    # half that, and a posting missed in the morning is caught that night
+    # while still inside the 24h freshness window.
+    kw = _keyword_set()
     locs = ["india"]
+    print(f"naukri keywords : {kw}")
     try:
         n_jobs, n_errs = naukri.fetch(
             kw, locs,
@@ -92,15 +126,60 @@ def main() -> int:
             store.record_run(conn, len(all_jobs), len(relevant), 0, errors)
             return 0
 
-        # ── 5. Notify ──────────────────────────────────────────────
+        # ── 5. Tailor strong fits, then notify ─────────────────────
         tg = Telegram()
         threshold = profile["limits"]["strong_fit_threshold"]
         strong = [j for j in fresh if j.score >= threshold]
         rest = [j for j in fresh if j.score < threshold]
 
-        for j in strong:
-            tg.send(strong_fit_card(j), preview=False)
+        # Tailor everything worth showing, not just live-ping fits. Real
+        # scores cluster at 50-75, so gating on strong_fit_threshold left
+        # most matches untailored.
+        tailor_at = profile["limits"].get("tailor_threshold",
+                                          profile["limits"]["min_score_to_show"])
+        to_tailor = [j for j in fresh if j.score >= tailor_at]
+        tailored: dict[str, object] = {}
 
+        for j in to_tailor:
+            result = None
+            try:
+                result = tailor(j, resume, profile)
+                if result.ok:
+                    result._old_headline = resume["headline"]["default"]
+                    saved = store.save_tailoring(conn, store.job_key(j), {
+                        "headline": result.headline,
+                        "summary": result.summary,
+                        "skill_order": result.skill_order,
+                        "bullets": result.bullets,
+                        "rationale": result.rationale,
+                        "warnings": (result.verdict.warnings
+                                     if result.verdict else []),
+                    })
+                    if not saved:
+                        errors.append(
+                            f"tailor[{j.company}]: computed but not persisted "
+                            f"(key mismatch) — /diff will not find it")
+                    print(f"  tailored: {j.company} — {j.title}")
+                else:
+                    errors.append(
+                        f"tailor[{j.company}]: {result.error}")
+                    print(f"  tailor FAILED: {j.company} — {result.error}")
+            except Exception as ex:
+                errors.append(f"tailor[{j.company}]: {type(ex).__name__}")
+                print(f"  tailor ERROR: {j.company} — {ex}")
+
+            tailored[store.job_key(j)] = result
+            # Gemini's free tier is rate-limited per minute; a short gap
+            # keeps a batch from tripping it.
+            time.sleep(4)
+
+        # Strong fits get a full card with the resume diff attached.
+        for j in strong:
+            tg.send(tailored_card(j, tailored.get(store.job_key(j))),
+                    preview=False)
+
+        # Everything else batches, with a marker showing which were
+        # tailored so PJ knows a /diff is available.
         if rest or not strong:
             tg.send(digest(rest, threshold))
 

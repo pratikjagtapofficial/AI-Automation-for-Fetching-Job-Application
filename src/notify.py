@@ -121,6 +121,63 @@ def strong_fit_card(job: Job) -> str:
     return "\n".join(lines)
 
 
+def tailored_card(job: Job, result) -> str:
+    """Strong-fit card with the resume changes attached.
+
+    Shows the headline swap and a couple of representative bullet edits
+    rather than all twelve — the point is for PJ to judge whether the
+    tailoring is honest in about ten seconds, not to read a full diff on
+    a phone. `/diff <company>` retrieves the rest.
+    """
+    e = html.escape
+    lines = [strong_fit_card(job)]
+
+    if not result or not result.ok:
+        reason = (result.error if result else "not attempted") or "unknown"
+        lines += [
+            "",
+            "📄 <b>Resume</b>: using original, untailored",
+            f"<i>Tailoring failed: {e(reason)}. Sending the base resume is "
+            f"the safe fallback — nothing invented.</i>",
+        ]
+        if result and result.verdict and result.verdict.violations:
+            lines.append("")
+            lines.append("🛑 <b>Validator blocked</b>")
+            lines += [f"• {e(v)}" for v in result.verdict.violations[:4]]
+        return "\n".join(lines)
+
+    lines += ["", "📄 <b>Resume tailored</b>"]
+
+    old_head = getattr(result, "_old_headline", "")
+    if result.headline and old_head and result.headline != old_head:
+        lines += [
+            f"<b>Headline</b>",
+            f"  <s>{e(old_head)}</s>",
+            f"  → {e(result.headline)}",
+        ]
+
+    changed = [b for b in result.bullets if b.get("changed")]
+    if changed:
+        lines.append(f"<b>{len(changed)} bullet(s) reworded</b>")
+        for b in changed[:2]:
+            lines.append(f"  • {e(' '.join(str(b.get('text','')).split())[:150])}")
+        if len(changed) > 2:
+            lines.append(f"  <i>…and {len(changed) - 2} more</i>")
+
+    if result.skill_order:
+        lines.append(f"<b>Skills led by</b>: {e(result.skill_order[0])}")
+
+    if result.rationale:
+        lines += ["", f"<i>{e(result.rationale[:220])}</i>"]
+
+    if result.verdict and result.verdict.warnings:
+        lines += ["", "⚠️ <b>Be ready to qualify</b>"]
+        lines += [f"• {e(w)}" for w in result.verdict.warnings[:3]]
+
+    lines += ["", f"<i>Full diff: /diff {e(job.company)}</i>"]
+    return "\n".join(lines)
+
+
 def digest(jobs: list[Job], strong_threshold: int) -> str:
     """Everything below the live-ping bar, batched into one message."""
     e = html.escape

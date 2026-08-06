@@ -85,9 +85,28 @@ def _title_matches(title: str, cfg: dict) -> bool:
     return any(w in low for w in wanted)
 
 
-def _title_too_senior(title: str) -> bool:
+def _excluded_title(title: str, cfg: dict) -> str | None:
+    """-> the term that excluded this title, or None.
+
+    Reads search.exclude_titles from the profile so the config is the
+    actual source of truth. It previously was not: a hardcoded pattern
+    list drove this, and edits to exclude_titles silently did nothing.
+    _SENIOR_PATTERNS still runs afterwards for shapes a word list cannot
+    express, like a trailing roman numeral.
+    """
     low = title.lower()
-    return any(re.search(p, low) for p in _SENIOR_PATTERNS)
+    for term in cfg.get("search", {}).get("exclude_titles") or []:
+        t = str(term).strip().lower()
+        if not t:
+            continue
+        # Whole-token match so "Lead" does not fire inside "Leading" and
+        # "Sr." keeps its dot.
+        if re.search(rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", low):
+            return str(term)
+    for p in _SENIOR_PATTERNS:
+        if re.search(p, low):
+            return "seniority pattern"
+    return None
 
 
 def _min_years_required(text: str) -> int | None:
@@ -121,8 +140,8 @@ def score_job(job: Job, cfg: dict, now: datetime | None = None) -> Job:
         job.score, job.reasons = 0, ["title not in target list"]
         return job
 
-    if _title_too_senior(job.title):
-        job.score, job.reasons = 0, ["title signals above entry level"]
+    if (term := _excluded_title(job.title, cfg)):
+        job.score, job.reasons = 0, [f"excluded title term: {term}"]
         return job
 
     if (reason := _blacklisted(job.company, job.description, cfg)):

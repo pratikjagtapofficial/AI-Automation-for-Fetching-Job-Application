@@ -26,6 +26,7 @@ HELP = """<b>Commands</b>
 /recent [n] — latest matches (default 5)
 /pending — matches awaiting your decision
 /brief &lt;company&gt; — what did I send them?
+/diff &lt;company&gt; — full resume changes for that job
 /help — this message
 
 You can also just type a company name to look it up."""
@@ -151,6 +152,33 @@ def handle(text: str) -> str:
                         f"<a href=\"{e(r['url'])}\">{e(r['title'])}</a>\n"
                         f"     {e(r['company'])} · {_age(r['posted_at'])}"
                     )
+                return "\n".join(out)
+
+            if cmd == "diff":
+                if not arg:
+                    return "Usage: <code>/diff &lt;company&gt;</code>"
+                rows = store.find_by_company(conn, arg)
+                if not rows:
+                    return f"No record for <b>{e(arg)}</b>."
+                row = next((r for r in rows if r["tailored_json"]), None)
+                if not row:
+                    return (f"No tailoring stored for <b>{e(arg)}</b>.\n"
+                            "<i>Only strong-fit roles get tailored — this one "
+                            "scored below the threshold, or tailoring failed.</i>")
+                t = store.get_tailoring(conn, row["key"]) or {}
+                out = [f"📄 <b>{e(row['company'])}</b> — {e(row['title'])}", ""]
+                out += [f"<b>Headline</b>\n  {e(t.get('headline',''))}", ""]
+                out += [f"<b>Summary</b>\n  {e(t.get('summary','')[:600])}", ""]
+                changed = [b for b in (t.get("bullets") or [])
+                           if b.get("changed")]
+                if changed:
+                    out.append(f"<b>Reworded bullets ({len(changed)})</b>")
+                    for b in changed:
+                        out.append(
+                            f"  <b>{e(b.get('id',''))}</b> "
+                            f"{e(' '.join(str(b.get('text','')).split()))}")
+                for w in t.get("warnings") or []:
+                    out += ["", f"⚠️ {e(w)}"]
                 return "\n".join(out)
 
             if cmd == "brief" or not text.startswith("/"):
