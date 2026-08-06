@@ -176,24 +176,27 @@ projects:
 
 education:
   locked: true
-  - degree: Master of Computer Applications (MCA)
-    institution: Sinhgad Institute of Management, Pune
-    from: 2024-09
-    to: 2026-06
-    score: null          # TODO(PJ): CGPA/percentage
-  - degree: Bachelor of Computer Applications (BCA)
-    institution: Mugutrao Sahebrao Kakade College, Pune
-    from: 2021-07
-    to: 2024-06
-    score: null          # TODO(PJ)
+  items:
+    - degree: Master of Computer Applications (MCA)
+      institution: Sinhgad Institute of Management, Pune
+      from: 2024-09
+      to: 2026-06
+      score: null          # TODO(PJ): CGPA/percentage
+    - degree: Bachelor of Computer Applications (BCA)
+      institution: Mugutrao Sahebrao Kakade College, Pune
+      from: 2021-07
+      to: 2024-06
+      score: null          # TODO(PJ)
 
 certifications:
   locked: true
-  - IABAC — Certified Data Scientist
-  - IABAC — Artificial Intelligence Expert Certification
-  - AI Engineer Certification, DataMites Global Institute
+  items:
+    - IABAC — Certified Data Scientist
+    - IABAC — Artificial Intelligence Expert Certification
+    - AI Engineer Certification, DataMites Global Institute
 
 achievements:
   locked: true
-  - 1st Place, 3D Model Design Competition
-  - CybageKhushboo Scholarship, Khushboo Charitable Trust
+  items:
+    - 1st Place, 3D Model Design Competition
+    - CybageKhushboo Scholarship, Khushboo Charitable Trust
