@@ -150,6 +150,9 @@ Scout → Scorer → Tailor → Validator → Approver(TG) → Applier → Track
 3. **No credentials** — no password entry, ever. Sessions established manually once by PJ;
    bot reuses cookies and pings him when they expire.
 4. **No LinkedIn automation** — reading listings only. Automated applying/messaging risks a ban.
+   Scope note: this is about *unofficial* automation against linkedin.com (scraping, scripted
+   clicks) — that's the ban mechanism. Posting via LinkedIn's own sanctioned "Share on LinkedIn"
+   API (see Phase 6) is a different action on a different surface and isn't covered by this rule.
 5. **Quiet search** — nothing public-facing; never run on a HireTalent device or network.
 
 ---
@@ -233,3 +236,69 @@ Guard rails:
 3. If the free tier ever changes: drop Naukri, fall back to ATS APIs +
    Hirist + Instahyre via self-hosted Playwright. Coverage drops, cost is
    structurally zero.
+
+---
+
+## Phase 6 — LinkedIn post drafting (decided 2026-08-07)
+
+A second, **fully independent** Telegram bot: PJ sends raw context (a
+topic, a bullet, a project note), Gemini drafts a LinkedIn post, a
+Telegram card comes back with **Post / Discard** buttons, and nothing
+publishes until that tap. This is content PJ shares on his own feed via
+LinkedIn's official, free "Share on LinkedIn" product (`w_member_social`
+scope) — not job-listing automation, and not covered by non-negotiable
+#4 above (see the scope note added there).
+
+**Why a second bot, not a feature bolted onto the first:** different
+sensitivity (draft cards vs. quiet job search), different failure domain
+(a bug here must not be able to touch `data/jobs.db` or the application
+pipeline), and different secrets (LinkedIn token exposure is worse than
+Telegram token exposure, since it can post publicly under PJ's name).
+
+| Piece | File | Shares with the job pipeline? |
+|---|---|---|
+| Poller | `src/social_bot.py` | No — own token (`SOCIAL_BOT_TOKEN`), own offset file (`.bot_offset.social`) |
+| Telegram send/inline-keyboard | `src/social_notify.py` | No — deliberately duplicated, not imported from `notify.py` |
+| Drafting | `src/social_draft.py` | Read-only: `config/profile.yml` (skills.lacks, identity) |
+| Guardrail gate | `src/social_draft.scan_guardrails` | Same principle as `validator.py`: deterministic, not the LLM |
+| Voice/tone config | `config/social.yml` | No |
+| Tracker | `src/social_store.py` → `data/social.db` | No — separate database file |
+| Posting | `src/linkedin.py` | No |
+| Chat | reuses `TELEGRAM_CHAT_ID` | Same person approving both, different bot identity |
+| Drafting model | reuses `GEMINI_API_KEY` | Same free-tier key, same training-data caveat as the resume tailor |
+
+**Guardrail gate** (`scan_guardrails`, deterministic — mirrors the resume
+Validator's philosophy exactly): blocks/flags job-search-signal phrases
+("open to work", "actively looking", etc. — full list in
+`config/social.yml`), the employer name (`never_mention: HireTalent`),
+and any skill from `profile.yml`'s `skills.lacks`. Flags surface on the
+Telegram card; PJ decides, same as the resume Validator's warnings.
+
+**One-time setup (PJ, by hand — the bot never sees credentials):**
+1. Create a LinkedIn Developer app at developer.linkedin.com — requires
+   linking a LinkedIn Company Page (free to create if PJ doesn't have one).
+2. Enable products: *Share on LinkedIn* + *Sign In with LinkedIn using
+   OpenID Connect*. Both are free, self-serve, no partner approval.
+3. Verify the app (LinkedIn's identity check).
+4. Run the OAuth authorization-code flow once, by hand, to get an access
+   token. Store it as `LINKEDIN_ACCESS_TOKEN`; store `now + 60 days` as
+   `LINKEDIN_ACCESS_TOKEN_EXPIRES_AT` (unix timestamp).
+5. In BotFather, create the second bot, store its token as
+   `SOCIAL_BOT_TOKEN`.
+
+**Known risk — token expiry:** standard (non-MDP) LinkedIn access tokens
+expire ~60 days after issue and carry no `refresh_token`, so there is no
+automatic renewal — PJ re-runs the OAuth flow by hand roughly six times a
+year. `linkedin.token_status()` surfaces the countdown via `/status`;
+nothing fails silently, same principle as the Naukri/Indeed cookie-expiry
+risk already listed above.
+
+**Not yet built:** always-on hosting. `social_bot.py` runs today as a
+local/manual poller (`python -m src.social_bot`), same starting point
+`bot.py` had before the Cloudflare Worker existed. Wiring it to run 24/7
+(its own Worker route, or riding on the Oracle box once Phase 4 lands) is
+a fast-follow, not a blocker — PJ can draft and approve posts right now
+by running the process while at his laptop.
+
+**Cost:** ₹0. Share on LinkedIn is free and self-serve; Gemini and
+Telegram are the same free tiers the job pipeline already uses.

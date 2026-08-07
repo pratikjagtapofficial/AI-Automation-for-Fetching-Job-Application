@@ -38,7 +38,7 @@ screenshots/
 .DS_Store
 Thumbs.db
 desktop.ini
-.bot_offset
+.bot_offset*
 data/*.db-journal
 
 # ─── Cloudflare Worker ────────────────────────────────────────

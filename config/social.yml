@@ -1,0 +1,39 @@
+# Voice and guardrails for LinkedIn drafts.
+#
+# Skill and employer facts are NOT duplicated here — social_draft.py reads
+# config/profile.yml at draft time for skills.lacks and identity, the same
+# single source of truth the job pipeline already uses. Only tone and
+# job-search-signal phrases live in this file.
+#
+# Nothing here is enforced by the model. Same principle as the resume
+# Validator: an LLM told "don't mention X" complies most of the time, and
+# the failure mode here is a public, permanent post — worse than a resume
+# a human catches before submitting. So drafting and checking are separate
+# steps; see social_draft.scan_guardrails for the deterministic part.
+
+voice:
+  tone: >
+    First person, concise, technical. No forced enthusiasm, no emoji
+    unless it earns its place, no hashtag spam, no "Excited to share..."
+    openers. Write like an engineer describing what they actually did.
+  max_hashtags: 3
+  max_chars: 3000       # LinkedIn's hard limit on a single post
+
+# Phrases that would signal an active job search. PJ is employed at
+# HireTalent and searching quietly — see SPEC.md "Non-negotiables".
+avoid_phrases:
+  - open to work
+  - actively looking
+  - job search
+  - job hunting
+  - looking for opportunities
+  - looking for a new role
+  - available for hire
+  - leaving my job
+  - my current employer
+  - between roles
+
+# Never named in a post — same discretion boundary as the job blacklist
+# in SPEC.md. Pulled in addition to (not instead of) profile.yml.
+never_mention:
+  - HireTalent

@@ -22,7 +22,7 @@ import yaml
 
 from . import apply as applier
 from . import callprep
-from . import hirist, instahyre, naukri, store
+from . import careerpages, hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
 from .render import render
@@ -177,6 +177,27 @@ def main() -> int:
     except Exception as e:
         errors.append(f"instahyre: {type(e).__name__}")
         print(f"instahyre       : FAILED {e}")
+
+    # ── 5. Career pages / ATS aggregator (metered, once daily) ──────
+    # Naukri already spends ~$2.50/mo at 2x/day; adding this at 2x/day
+    # too would push combined Apify spend past the $5 free tier the same
+    # way the original Cowork-vs-pipeline collision did. Runs once daily
+    # instead, on the 14:00 IST slot (the one PJ is more reliably at his
+    # laptop for, though this source has no laptop dependency itself).
+    from datetime import datetime as _dt, timezone as _tz
+    if 6 <= _dt.now(_tz.utc).hour < 14 or _truthy(os.environ.get("FORCE_CAREERPAGES")):
+        try:
+            c_jobs, c_errs = careerpages.fetch(
+                ["AI Engineer", "AI Developer", "GenAI Engineer",
+                 "Machine Learning Engineer", "Agentic AI Engineer"])
+            all_jobs += c_jobs
+            errors += c_errs
+            print(f"careerpages     : {len(c_jobs)} postings")
+        except Exception as e:
+            errors.append(f"careerpages: {type(e).__name__}")
+            print(f"careerpages     : FAILED {e}")
+    else:
+        print("careerpages     : skipped (runs once/day to control Apify cost)")
 
     print(f"total fetched   : {len(all_jobs)}")
 
