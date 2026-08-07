@@ -60,12 +60,27 @@ jobs:
         # Same reasoning as scout.yml's tracker commit: Actions runners
         # are ephemeral, so without this, draft IDs and "posted" history
         # would vanish after every run.
+        #
+        # The plain `git push` here used to fail whenever main moved
+        # between checkout and push — e.g. the job-automation side (a
+        # separate, unrelated system) pushing its own commits at the
+        # same moment. Only this workflow ever touches data/social.db,
+        # so a rebase always replays cleanly; retrying a few times
+        # absorbs the race instead of failing the run over it.
         run: |
           git config user.name  "social-bot[bot]"
           git config user.email "social-bot@users.noreply.github.com"
           git add data/social.db
-          git diff --staged --quiet || git commit -m "drafts: $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "drafts: $(date -u +%Y-%m-%dT%H:%MZ)"
+          for attempt in 1 2 3 4 5; do
+            git push && exit 0
+            echo "push rejected (attempt $attempt) — rebasing onto latest main and retrying"
+            git pull --rebase origin main
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push data/social.db after 5 attempts"
+          exit 1
 
       - name: Alert on failure
         if: failure()
