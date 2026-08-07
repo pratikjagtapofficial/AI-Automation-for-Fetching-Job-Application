@@ -239,21 +239,39 @@ Guard rails:
 
 ---
 
-## Phase 6 — LinkedIn post drafting (decided 2026-08-07)
+## Phase 6 — LinkedIn post drafting (decided 2026-08-07, revised 2026-08-07)
 
 A second, **fully independent** Telegram bot: PJ sends raw context (a
-topic, a bullet, a project note), Gemini drafts a LinkedIn post, a
-Telegram card comes back with **Post / Discard** buttons, and nothing
-publishes until that tap. This is content PJ shares on his own feed via
-LinkedIn's official, free "Share on LinkedIn" product (`w_member_social`
-scope) — not job-listing automation, and not covered by non-negotiable
-#4 above (see the scope note added there).
+topic, a bullet, a project note), Gemini drafts a LinkedIn post, and a
+Telegram card comes back with the text in a tap-to-copy block plus any
+guardrail flags. PJ copies it and pastes it into LinkedIn himself. **The
+bot never calls any LinkedIn API and never publishes anything.**
 
-**Why a second bot, not a feature bolted onto the first:** different
-sensitivity (draft cards vs. quiet job search), different failure domain
-(a bug here must not be able to touch `data/jobs.db` or the application
-pipeline), and different secrets (LinkedIn token exposure is worse than
-Telegram token exposure, since it can post publicly under PJ's name).
+**Revision note — why this isn't the official-API version originally
+planned:** LinkedIn's API Terms of Use, Section 3.1.26, lists as a
+prohibited use: *"Use the Content or the APIs to automate posting on the
+LinkedIn Services."* That's a direct, literal match for what the first
+version of this phase built (`src/linkedin.py`, since deleted) — a script
+calling `POST /rest/posts` to publish. A human approving the content
+first doesn't create an exception in that clause; the prohibition is on
+the API call being automated, not on who wrote the words. Consequence
+isn't legal exposure (it's a private ToS, not a law) but LinkedIn could
+revoke the app's API access and, less predictably, take action against
+the LinkedIn account tied to it — a real risk given how much this whole
+project protects PJ's account for the quiet search (see non-negotiable
+#5). Not worth it for a convenience feature, so the design changed to
+copy-paste before any OAuth setup was completed — no LinkedIn access
+token was ever issued or stored.
+
+**Practical upside of the revision:** no LinkedIn Developer app, no
+OAuth flow, no Company Page requirement, no 60-day token expiry to
+babysit. The whole setup is now just a second Telegram bot token.
+
+**Why a second bot at all, not a feature bolted onto the first:**
+different sensitivity (draft cards vs. quiet job search), different
+failure domain (a bug here must not be able to touch `data/jobs.db` or
+the application pipeline), and simple signal separation — 10-20 job
+cards a day would bury a post draft.
 
 | Piece | File | Shares with the job pipeline? |
 |---|---|---|
@@ -263,42 +281,34 @@ Telegram token exposure, since it can post publicly under PJ's name).
 | Guardrail gate | `src/social_draft.scan_guardrails` | Same principle as `validator.py`: deterministic, not the LLM |
 | Voice/tone config | `config/social.yml` | No |
 | Tracker | `src/social_store.py` → `data/social.db` | No — separate database file |
-| Posting | `src/linkedin.py` | No |
+| Publishing | *(none — manual copy-paste)* | N/A |
 | Chat | reuses `TELEGRAM_CHAT_ID` | Same person approving both, different bot identity |
 | Drafting model | reuses `GEMINI_API_KEY` | Same free-tier key, same training-data caveat as the resume tailor |
 
 **Guardrail gate** (`scan_guardrails`, deterministic — mirrors the resume
-Validator's philosophy exactly): blocks/flags job-search-signal phrases
-("open to work", "actively looking", etc. — full list in
-`config/social.yml`), the employer name (`never_mention: HireTalent`),
-and any skill from `profile.yml`'s `skills.lacks`. Flags surface on the
-Telegram card; PJ decides, same as the resume Validator's warnings.
+Validator's philosophy exactly): flags job-search-signal phrases ("open
+to work", "actively looking", etc. — full list in `config/social.yml`),
+the employer name (`never_mention: HireTalent`), and any skill from
+`profile.yml`'s `skills.lacks`. Flags surface on the Telegram card; PJ
+decides, same as the resume Validator's warnings — this gate matters
+*more* here than in the resume case, since a LinkedIn post is public and
+permanent the moment PJ pastes it, with no second Validator pass on the
+way out.
 
-**One-time setup (PJ, by hand — the bot never sees credentials):**
-1. Create a LinkedIn Developer app at developer.linkedin.com — requires
-   linking a LinkedIn Company Page (free to create if PJ doesn't have one).
-2. Enable products: *Share on LinkedIn* + *Sign In with LinkedIn using
-   OpenID Connect*. Both are free, self-serve, no partner approval.
-3. Verify the app (LinkedIn's identity check).
-4. Run the OAuth authorization-code flow once, by hand, to get an access
-   token. Store it as `LINKEDIN_ACCESS_TOKEN`; store `now + 60 days` as
-   `LINKEDIN_ACCESS_TOKEN_EXPIRES_AT` (unix timestamp).
-5. In BotFather, create the second bot, store its token as
-   `SOCIAL_BOT_TOKEN`.
+**Setup:** create the second bot in BotFather, store its token as
+`SOCIAL_BOT_TOKEN` in `.env`. That's the entire setup.
 
-**Known risk — token expiry:** standard (non-MDP) LinkedIn access tokens
-expire ~60 days after issue and carry no `refresh_token`, so there is no
-automatic renewal — PJ re-runs the OAuth flow by hand roughly six times a
-year. `linkedin.token_status()` surfaces the countdown via `/status`;
-nothing fails silently, same principle as the Naukri/Indeed cookie-expiry
-risk already listed above.
+**Copy mechanism:** the draft text is sent inside Telegram's `<pre>`
+block, which renders as monospace with a native one-tap/long-press copy
+action and returns the exact text with no markdown or HTML artifacts —
+no separate "export" step needed.
 
 **Not yet built:** always-on hosting. `social_bot.py` runs today as a
 local/manual poller (`python -m src.social_bot`), same starting point
 `bot.py` had before the Cloudflare Worker existed. Wiring it to run 24/7
-(its own Worker route, or riding on the Oracle box once Phase 4 lands) is
-a fast-follow, not a blocker — PJ can draft and approve posts right now
-by running the process while at his laptop.
+is a fast-follow, not a blocker — PJ can draft right now by running the
+process while at his laptop.
 
-**Cost:** ₹0. Share on LinkedIn is free and self-serve; Gemini and
-Telegram are the same free tiers the job pipeline already uses.
+**Cost:** ₹0. Gemini and Telegram are the same free tiers the job
+pipeline already uses; there is nothing LinkedIn-side to pay for or
+authenticate against.

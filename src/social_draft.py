@@ -62,33 +62,45 @@ def _profile() -> dict:
         (ROOT / "config" / "profile.yml").read_text(encoding="utf-8"))
 
 
+def _strategy() -> str:
+    return (ROOT / "config" / "social_strategy.md").read_text(encoding="utf-8")
+
+
 def build_prompt(context: str) -> str:
+    """The strategy doc (PJ-authored, config/social_strategy.md) sets the
+    voice, structure, and topic guidance. The hard rules below always
+    win over it on facts — skills, employer, experience level — because
+    the strategy doc is about persuasion and the hard rules are about
+    what's actually true. See that file's "Hard override" section for
+    why this split exists (it lists Docker/Azure/AWS as SEO keywords;
+    profile.yml says PJ doesn't have them, and profile.yml is the single
+    source of truth the whole project treats as authoritative)."""
     voice = _voice()
     profile = _profile()
     v = voice.get("voice", {}) or {}
     lacks = (profile.get("skills", {}) or {}).get("lacks") or []
+    months = (profile.get("experience", {}) or {}).get("total_months", 0)
     name = (profile.get("identity", {}) or {}).get("full_name", "the author")
     max_chars = v.get("max_chars", 3000)
-    max_tags = v.get("max_hashtags", 3)
-    tone = (v.get("tone") or "").strip()
 
-    return f"""Write ONE LinkedIn post for {name}, an AI/ML developer.
+    return f"""{_strategy()}
 
-# CONTEXT FROM THE AUTHOR — this is the raw material, expand and shape it
+# CONTEXT FROM PRATIK — this is the raw material for today's post, expand and shape it using the strategy above
 {context.strip()}
 
-# VOICE
-{tone}
-
-# HARD RULES
-- Under {max_chars} characters.
-- At most {max_tags} hashtags, only if they add real discovery value.
-- Do not imply the author is job hunting, open to work, or dissatisfied
-  with their current role. This is a technical share, not a status update.
-- Do not claim any of these skills — the author does not have them:
+# HARD RULES — these override the strategy document above if they ever conflict
+- Do not claim any of these skills anywhere in the post, even as an SEO
+  keyword or a passing mention — Pratik does not have them:
   {', '.join(lacks) if lacks else '(none)'}
-- Do not name the author's current employer.
-- First person, no corporate voice.
+- Pratik has ~{months} months of professional experience. Do not imply more.
+- Do not name Pratik's current employer.
+- Do not invent projects, metrics, companies, or achievements not present
+  in the context above. If the context is thin, keep the post general
+  rather than filling gaps with invented specifics.
+- Do not imply Pratik is job hunting, open to work, or dissatisfied with
+  his current role. This is a technical share, not a status update.
+- Hard character limit: {max_chars} (LinkedIn's own cap) — the strategy
+  document's 180-350 word target is the real goal, this is just a ceiling.
 
 # OUTPUT
 Return ONLY valid JSON, no markdown fence:

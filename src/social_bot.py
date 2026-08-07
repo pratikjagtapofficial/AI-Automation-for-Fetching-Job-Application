@@ -11,14 +11,21 @@ accident of file layout.
     python -m src.social_bot --once     # drain pending updates and exit
 
 Flow: send any text that isn't a command and it's treated as raw context
--> a draft comes back with Post / Discard buttons -> tapping Post
-publishes immediately via the official Share on LinkedIn API. Nothing
-goes out without that tap.
+-> a draft comes back in a tap-to-copy block, plus any guardrail flags.
+Paste it into LinkedIn yourself and post it there.
+
+This bot never calls any LinkedIn API to publish. LinkedIn's API Terms
+of Use (Section 3.1.26) prohibit using the API "to automate posting on
+the LinkedIn Services" — full stop, regardless of a human approving the
+content first. So there is no post_text() call anywhere in this file;
+"Mark posted" below is pure bookkeeping (for /status history), not a
+publish action. See SPEC.md "Phase 6" for the finding.
 """
 
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import sys
@@ -26,7 +33,7 @@ import time
 
 import httpx
 
-from . import linkedin, social_draft, social_store
+from . import social_draft, social_store
 from .social_notify import Telegram, draft_card
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -35,11 +42,11 @@ OFFSET_FILE = ".bot_offset.social"
 HELP = """<b>LinkedIn draft bot</b>
 
 Send any text — a topic, a bullet, a raw idea — and I'll draft a post
-from it and send it back for approval. Nothing posts without you tapping
-Post.
+from it and send it back in a tap-to-copy block. Paste it into LinkedIn
+yourself; this bot never posts anything on its own.
 
-/drafts — pending drafts awaiting a decision
-/status — token health + recent posts
+/drafts — pending drafts
+/status — recent activity
 /help — this message"""
 
 
@@ -69,8 +76,11 @@ def _save_offset(v: int) -> None:
         pass
 
 
-def _approval_buttons(draft_id: int):
-    return [[("✅ Post", f"post:{draft_id}"), ("❌ Discard", f"discard:{draft_id}")]]
+def _draft_buttons(draft_id: int):
+    # Both actions are bookkeeping only — neither calls any LinkedIn API.
+    # Posting happens when PJ pastes the copied text into LinkedIn himself.
+    return [[("✅ Mark posted", f"posted:{draft_id}"),
+             ("❌ Discard", f"discard:{draft_id}")]]
 
 
 def _handle_text(tg: Telegram, text: str) -> None:
@@ -87,7 +97,6 @@ def _handle_text(tg: Telegram, text: str) -> None:
             recent = social_store.recent_posted(conn, 5)
         lines = [
             "📊 <b>Social bot</b>",
-            f"LinkedIn token: {linkedin.token_status()}",
             f"pending drafts: <b>{len(pend)}</b>",
         ]
         if recent:
@@ -106,7 +115,7 @@ def _handle_text(tg: Telegram, text: str) -> None:
         for d in pend:
             flags = json.loads(d["flags"] or "[]")
             tg.send(draft_card(d["id"], d["text"], flags),
-                    buttons=_approval_buttons(d["id"]))
+                    buttons=_draft_buttons(d["id"]))
         return
 
     if stripped.startswith("/"):
@@ -127,7 +136,7 @@ def _handle_text(tg: Telegram, text: str) -> None:
         draft_id = social_store.create(conn, stripped, result.text, result.flags)
 
     resp = tg.send(draft_card(draft_id, result.text, result.flags),
-                   buttons=_approval_buttons(draft_id))
+                   buttons=_draft_buttons(draft_id))
     msg = resp.get("result") or {}
     if msg.get("message_id"):
         with social_store.connect() as conn:
@@ -160,24 +169,15 @@ def _handle_callback(tg: Telegram, cq: dict) -> None:
                 tg.edit(message_id, f"❌ <b>Discarded</b> — draft #{draft_id}")
             return
 
-        if action == "post":
-            tg.answer_callback(cq_id, "posting…")
-            result = linkedin.post_text(row["text"])
-            if not result.ok:
-                if message_id:
-                    tg.edit(
-                        message_id,
-                        f"⚠️ <b>Post failed</b> — draft #{draft_id}\n"
-                        f"{result.error}\n\n<i>Still pending — fix the "
-                        f"issue and tap Post again.</i>",
-                        buttons=_approval_buttons(draft_id),
-                    )
-                return
-            social_store.mark_posted(conn, draft_id, result.post_id)
+        if action == "posted":
+            # Bookkeeping only — PJ already pasted this into LinkedIn
+            # himself. No API call happens here.
+            social_store.mark_posted(conn, draft_id, "")
+            tg.answer_callback(cq_id, "marked posted")
             if message_id:
                 tg.edit(message_id,
-                        f"✅ <b>Posted</b> — draft #{draft_id}\n\n"
-                        f"{row['text']}")
+                        f"✅ <b>Marked posted</b> — draft #{draft_id}\n\n"
+                        f"<pre>{html.escape(row['text'])}</pre>")
             return
 
     tg.answer_callback(cq_id, "unknown action")

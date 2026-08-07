@@ -88,11 +88,22 @@ class Telegram:
 
 def draft_card(draft_id: int, text: str, flags: list[str]) -> str:
     """Built to be judged in a few seconds on a phone, same spirit as
-    notify.py's strong_fit_card."""
+    notify.py's strong_fit_card — and built to be copied cleanly.
+
+    The post text sits inside a <pre> block. Telegram renders that as
+    monospace with a one-tap copy action (desktop: hover, click the copy
+    icon; mobile: tap the block, or long-press -> Copy) and hands back
+    the exact text with no HTML entities or markdown symbols mixed in.
+    Nothing outside the <pre> block is meant to be copied.
+    """
     e = html.escape
-    lines = [f"📝 <b>Draft #{draft_id}</b>", "", e(text)]
+    lines = [
+        f"📝 <b>Draft #{draft_id}</b> — tap the block below to copy",
+        "",
+        f"<pre>{e(text)}</pre>",
+    ]
     if flags:
-        lines += ["", "⚠️ <b>Flags — check before posting</b>"]
+        lines += ["", "⚠️ <b>Flags — check before pasting this anywhere</b>"]
         lines += [f"• {e(f)}" for f in flags]
     lines += ["", f"<i>{len(text)} characters</i>"]
     return "\n".join(lines)

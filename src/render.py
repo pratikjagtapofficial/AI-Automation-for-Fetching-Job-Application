@@ -1,18 +1,21 @@
-"""Render resume.yml (+ optional tailoring) to an ATS-safe PDF.
+"""Render resume.yml (+ optional tailoring) to a PDF matching PJ's own
+template layout: Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf.
 
-ATS parsers extract a linear text stream. Anything that breaks that
-stream costs matches, so this deliberately avoids what looks nice and
-parses badly:
+Only the WORDS are tailored per job — the layout is fixed and must match
+what PJ already uses, not a layout this renderer invented. Verified
+against the source PDF directly:
 
-  * no tables, columns, or text boxes — single linear flow
-  * no headers/footers — parsers often drop or misplace them
-  * no icons or text-as-image — contact details must be real text
-  * standard Helvetica — always embedded and extractable
-  * plain "-" bullets rather than glyphs that extract as garbage
+  * centered header block (name, blue headline, contact line with blue
+    hyperlinked LinkedIn/GitHub)
+  * blue, bold, ruled section headings (a thin horizontal rule directly
+    under each heading, full width)
+  * role/company left + date range right on one line, dates italic
+  * round bullet "●" (confirmed ATS-safe: pypdf extracted the source
+    file's own bullets as this exact character with no corruption)
 
-ReportLab is used because it is pure Python: no cairo/pango system
-libraries, so the same code runs on Windows locally and on the Ubuntu
-GitHub Actions runner without extra setup.
+Everything remains linear, extractable text — no tables used for content,
+only for the left/right date-alignment trick, which produces the same
+text stream a single paragraph would.
 """
 
 from __future__ import annotations
@@ -20,56 +23,55 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.colors import HexColor, black
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (BaseDocTemplate, Frame, HRFlowable, KeepTogether,
-                                PageTemplate, Paragraph, Spacer)
+                                PageTemplate, Paragraph, Spacer, Table, TableStyle)
 
-INK = HexColor("#111111")
-MUTED = HexColor("#444444")
-RULE = HexColor("#999999")
+# Matches the source template's accent colour, used consistently for the
+# headline, section headings, rules, and hyperlink text.
+BLUE = HexColor("#1155CC")
+INK = black
 
-# Tightened progressively if the document spills past one page.
 DENSITY_STEPS = [
-    {"body": 9.6, "lead": 12.2, "gap": 3.4, "sec": 10.4},
-    {"body": 9.2, "lead": 11.5, "gap": 2.8, "sec": 10.0},
-    {"body": 8.8, "lead": 10.9, "gap": 2.2, "sec": 9.6},
-    {"body": 8.4, "lead": 10.3, "gap": 1.7, "sec": 9.2},
+    {"body": 10.0, "lead": 13.5, "gap": 5.0, "sec": 11.5},
+    {"body": 9.5, "lead": 12.8, "gap": 4.2, "sec": 11.0},
+    {"body": 9.0, "lead": 12.1, "gap": 3.4, "sec": 10.5},
+    {"body": 8.5, "lead": 11.4, "gap": 2.6, "sec": 10.0},
 ]
 
 
 def _styles(d: dict) -> dict:
     base = dict(fontName="Helvetica", textColor=INK, leading=d["lead"])
     return {
-        "name": ParagraphStyle("name", fontName="Helvetica-Bold", fontSize=17,
-                               leading=19.5, textColor=INK, spaceAfter=1.5),
+        "name": ParagraphStyle("name", fontName="Helvetica-Bold", fontSize=18,
+                               leading=20, textColor=INK, alignment=TA_CENTER,
+                               spaceAfter=2),
         "headline": ParagraphStyle("headline", fontName="Helvetica",
-                                   fontSize=d["body"] + 0.6,
-                                   leading=d["lead"], textColor=MUTED,
+                                   fontSize=d["body"] + 2.5, leading=d["lead"] + 2,
+                                   textColor=BLUE, alignment=TA_CENTER,
                                    spaceAfter=2),
         "contact": ParagraphStyle("contact", fontName="Helvetica",
-                                  fontSize=d["body"] - 0.3,
-                                  leading=d["lead"] - 1, textColor=MUTED),
+                                  fontSize=d["body"] - 0.2, leading=d["lead"] - 1,
+                                  textColor=INK, alignment=TA_CENTER),
         "section": ParagraphStyle("section", fontName="Helvetica-Bold",
                                   fontSize=d["sec"], leading=d["sec"] + 2,
-                                  textColor=INK, spaceBefore=d["gap"] + 2.5,
-                                  spaceAfter=1.5),
+                                  textColor=BLUE, spaceBefore=d["gap"] + 2,
+                                  spaceAfter=1, alignment=TA_LEFT),
         "body": ParagraphStyle("body", fontSize=d["body"], **base),
         "summary": ParagraphStyle("summary", fontSize=d["body"],
                                   alignment=TA_JUSTIFY, **base),
         "role": ParagraphStyle("role", fontName="Helvetica-Bold",
-                               fontSize=d["body"] + 0.2, leading=d["lead"],
-                               textColor=INK, spaceBefore=d["gap"]),
-        "meta": ParagraphStyle("meta", fontName="Helvetica-Oblique",
-                               fontSize=d["body"] - 0.6,
-                               leading=d["lead"] - 1.5, textColor=MUTED,
-                               spaceAfter=1),
-        "bullet": ParagraphStyle("bullet", fontSize=d["body"],
-                                 leftIndent=8, bulletIndent=0,
-                                 spaceAfter=0.8, **base),
+                               fontSize=d["body"] + 0.3, leading=d["lead"],
+                               textColor=INK),
+        "date": ParagraphStyle("date", fontName="Helvetica-Oblique",
+                               fontSize=d["body"] - 0.3, leading=d["lead"],
+                               textColor=INK, alignment=TA_LEFT),
+        "bullet": ParagraphStyle("bullet", fontSize=d["body"], leftIndent=12,
+                                 bulletIndent=0, spaceAfter=1.2, **base),
     }
 
 
@@ -86,6 +88,8 @@ def _period(a, b) -> str:
         v = str(v)
         if v.lower() in ("present", "current"):
             return "Present"
+        if v.lower() == "pursuing":
+            return "Pursuing"
         m = re.match(r"(\d{4})-(\d{2})", v)
         if m:
             months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -96,7 +100,6 @@ def _period(a, b) -> str:
 
 
 def _bullet_text(resume: dict, bid: str, tailored: dict | None) -> str | None:
-    """Tailored wording when present, else the original. Never invents."""
     if tailored:
         for b in tailored.get("bullets") or []:
             if b.get("id") == bid:
@@ -109,7 +112,31 @@ def _bullet_text(resume: dict, bid: str, tailored: dict | None) -> str | None:
     return None
 
 
-def _build(resume: dict, tailored: dict | None, d: dict) -> list:
+def _row(left_flow, right_text: str, st: dict, width: float):
+    """Title/company on the left, italic date range flush right — the
+    layout the source template uses for every entry heading line."""
+    right = Paragraph(_esc(right_text), st["date"]) if right_text else Paragraph("", st["date"])
+    t = Table([[left_flow, right]], colWidths=[width * 0.72, width * 0.28])
+    t.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+    ]))
+    return t
+
+
+def _ruled_heading(text: str, st: dict) -> list:
+    return [
+        Paragraph(text.upper(), st["section"]),
+        HRFlowable(width="100%", thickness=0.8, color=BLUE, spaceAfter=3,
+                  spaceBefore=0),
+    ]
+
+
+def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
     st = _styles(d)
     flow: list = []
     c = resume["contact"]
@@ -119,91 +146,88 @@ def _build(resume: dict, tailored: dict | None, d: dict) -> list:
     headline = (tailored or {}).get("headline") or resume["headline"]["default"]
     flow.append(Paragraph(_esc(headline), st["headline"]))
 
-    bits = [c.get("location"), c.get("phone"), c.get("email"),
-            c.get("linkedin"), c.get("github")]
-    # Contact details as plain text, never icons — parsers cannot read
-    # glyphs, and a missed phone number costs a callback.
-    flow.append(Paragraph(
-        " | ".join(_esc(b) for b in bits if b), st["contact"]))
+    def link(label, url):
+        return f'<link href="{_esc(url)}" color="#1155CC"><u>{_esc(label)}</u></link>'
+
+    bits = [c.get("location"), c.get("phone"), c.get("email")]
+    bits = [_esc(b) for b in bits if b]
+    if c.get("linkedin"):
+        bits.append(link("LinkedIn", c["linkedin"]))
+    if c.get("github"):
+        bits.append(link("GitHub", c["github"]))
+    flow.append(Paragraph(" | ".join(bits), st["contact"]))
     flow.append(Spacer(1, d["gap"]))
-    flow.append(HRFlowable(width="100%", thickness=0.6, color=RULE,
-                           spaceAfter=d["gap"]))
 
     summary = (tailored or {}).get("summary") or resume["summary"]["default"]
     if summary:
-        flow.append(Paragraph("PROFESSIONAL SUMMARY", st["section"]))
+        flow += _ruled_heading("Professional Summary", st)
         flow.append(Paragraph(_esc(summary), st["summary"]))
 
-    # Skills, in the tailored group order when supplied.
     groups = {g["name"]: g["items"] for g in resume["skills"]["groups"]}
-    order = [n for n in ((tailored or {}).get("skill_order") or [])
-             if n in groups]
+    order = [n for n in ((tailored or {}).get("skill_order") or []) if n in groups]
     order += [n for n in groups if n not in order]
     if order:
-        flow.append(Paragraph("TECHNICAL SKILLS", st["section"]))
+        flow += _ruled_heading("Technical Skills", st)
         for name in order:
             items = ", ".join(_esc(i) for i in groups[name])
-            flow.append(Paragraph(
-                f"<b>{_esc(name)}:</b> {items}", st["body"]))
+            flow.append(Paragraph(f"<b>{_esc(name)}:</b> {items}", st["body"]))
 
     def entries(section: str, heading: str) -> None:
         rows = resume.get(section) or []
         if not rows:
             return
-        flow.append(Paragraph(heading, st["section"]))
+        flow.extend(_ruled_heading(heading, st))
         for entry in rows:
-            block = []
             if section == "experience":
-                title = f"{_esc(entry['role'])} | {_esc(entry['company'])}"
+                left_text = (f'<b>{_esc(entry["role"])}</b>  |  '
+                            f'{_esc(entry["company"])}'
+                            + (f' - {_esc(entry["company_note"])}'
+                               if entry.get("company_note") else ""))
             else:
-                title = _esc(entry.get("name", ""))
+                left_text = f'<b>{_esc(entry.get("name", ""))}</b>'
+            left = Paragraph(left_text, st["role"])
             period = _period(entry.get("from"), entry.get("to"))
-            block.append(Paragraph(title, st["role"]))
-            if period:
-                block.append(Paragraph(_esc(period), st["meta"]))
+
+            block = [_row(left, period, st, width)]
             for b in entry.get("bullets") or []:
                 txt = _bullet_text(resume, b.get("id", ""), tailored)
                 if txt:
-                    block.append(Paragraph(_esc(txt), st["bullet"],
-                                           bulletText="-"))
-            # Keep a role and its first lines together across a break.
+                    block.append(Paragraph(_esc(txt), st["bullet"], bulletText="●"))
             flow.append(KeepTogether(block))
 
-    entries("experience", "PROFESSIONAL EXPERIENCE")
-    entries("projects", "PROJECTS")
+    entries("experience", "Professional Experience")
+    entries("projects", "Projects")
 
     edu = (resume.get("education") or {}).get("items") or []
     if edu:
-        flow.append(Paragraph("EDUCATION", st["section"]))
+        flow += _ruled_heading("Education", st)
         for e in edu:
-            line = f"<b>{_esc(e['degree'])}</b>, {_esc(e['institution'])}"
+            # Score is kept off the title line and shown separately: some
+            # institution names are long enough that appending "— 7.78
+            # CGPA" pushed the line onto two rows, which stranded the
+            # right-aligned date away from the text it belongs beside.
+            left = Paragraph(
+                f'<b>{_esc(e["degree"])}</b>, {_esc(e["institution"])}',
+                st["body"])
             period = _period(e.get("from"), e.get("to"))
+            flow.append(_row(left, period, st, width))
             if e.get("score"):
-                line += f" — {_esc(e['score'])}"
-            if period:
-                line += f" ({_esc(period)})"
-            flow.append(Paragraph(line, st["body"]))
-            # An unawarded degree must say so on the page itself. A date
-            # range alone reads as "completed", which would be false.
-            if e.get("note"):
-                flow.append(Paragraph(_esc(e["note"]), st["meta"]))
+                flow.append(Paragraph(_esc(e["score"]), st["date"]))
 
     certs = (resume.get("certifications") or {}).get("items") or []
     if certs:
-        flow.append(Paragraph("CERTIFICATIONS", st["section"]))
+        flow += _ruled_heading("Certifications", st)
         flow.append(Paragraph(" | ".join(_esc(x) for x in certs), st["body"]))
 
     ach = (resume.get("achievements") or {}).get("items") or []
     if ach:
-        flow.append(Paragraph("ACHIEVEMENTS", st["section"]))
+        flow += _ruled_heading("Achievements", st)
         flow.append(Paragraph(" | ".join(_esc(x) for x in ach), st["body"]))
 
     return flow
 
 
 class _Counter(BaseDocTemplate):
-    """Counts pages so density can be retried without writing a file."""
-
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         self.page_count = 0
@@ -215,33 +239,28 @@ class _Counter(BaseDocTemplate):
 def render(resume: dict, out_path: str | Path,
            tailored: dict | None = None,
            target_pages: int = 1) -> tuple[Path, int]:
-    """Write the PDF. -> (path, pages).
-
-    Tries progressively tighter density until it fits target_pages. A
-    fresher resume running to two pages reads badly, but silently
-    shrinking to unreadable is worse — so the steps are bounded and the
-    real page count is returned for the caller to report.
-    """
+    """Write the PDF, matching PJ's own template layout. -> (path, pages)."""
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    left_margin = right_margin = 16 * mm
+    content_width = A4[0] - left_margin - right_margin
 
     pages = 99
     for step in DENSITY_STEPS:
         doc = _Counter(
             str(out), pagesize=A4,
-            leftMargin=14 * mm, rightMargin=14 * mm,
-            topMargin=11 * mm, bottomMargin=11 * mm,
+            leftMargin=left_margin, rightMargin=right_margin,
+            topMargin=12 * mm, bottomMargin=11 * mm,
             title=f"{resume['contact']['name']} - Resume",
             author=resume["contact"]["name"],
-            subject=(tailored or {}).get("headline")
-                    or resume["headline"]["default"],
+            subject=(tailored or {}).get("headline") or resume["headline"]["default"],
         )
-        frame = Frame(doc.leftMargin, doc.bottomMargin,
-                      doc.width, doc.height, id="body",
-                      leftPadding=0, rightPadding=0,
+        frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height,
+                      id="body", leftPadding=0, rightPadding=0,
                       topPadding=0, bottomPadding=0)
         doc.addPageTemplates([PageTemplate(id="main", frames=[frame])])
-        doc.build(_build(resume, tailored, step))
+        doc.build(_build(resume, tailored, step, content_width))
         pages = doc.page_count
         if pages <= target_pages:
             break
