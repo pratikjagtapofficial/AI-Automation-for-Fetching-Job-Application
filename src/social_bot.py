@@ -7,8 +7,18 @@ commands, or notify — and nothing there imports this. A crash or bug in
 one bot cannot reach the other; that is the entire design goal, not an
 accident of file layout.
 
-    python -m src.social_bot            # run until interrupted
-    python -m src.social_bot --once     # drain pending updates and exit
+    python -m src.social_bot                       # run until interrupted (local use)
+    python -m src.social_bot --once                # drain pending updates and exit
+    python -m src.social_bot --handle-message TEXT  # one-shot, used by GitHub Actions
+    python -m src.social_bot --handle-callback JSON # one-shot, used by GitHub Actions
+
+The last two modes exist for 24/7 operation without a laptop: the same
+Cloudflare Worker that already serves the job bot (see worker/worker.js)
+takes a second route for this bot's webhook, dispatches to GitHub
+Actions, and Actions runs one of these one-shot modes and exits — no
+polling loop involved. The polling loop above still works for local
+testing, but must not run at the same time as the webhook (Telegram
+will not deliver to both — see worker/README.md).
 
 Flow: send any text that isn't a command and it's treated as raw context
 -> a draft comes back in a tap-to-copy block, plus any guardrail flags.
@@ -249,9 +259,36 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--once", action="store_true",
                    help="drain pending updates and exit")
+    p.add_argument("--handle-message",
+                   help="process one message's text and exit (used by "
+                        "the Worker -> Actions dispatch, not polling)")
+    p.add_argument("--handle-callback",
+                   help="process one callback_query, given as a JSON "
+                        "string with id/data/message.message_id, and exit")
     args = p.parse_args()
 
     token = _token()
+
+    # One-shot modes for the webhook path: no offset file, no getUpdates
+    # call — the Worker already received the update, this just does the
+    # work Telegram itself cannot (drafting needs a Gemini call, and the
+    # Worker's execution budget is too short to wait on that reliably).
+    if args.handle_message is not None:
+        tg = Telegram(token, _allowed_chat())
+        _handle_text(tg, args.handle_message)
+        return 0
+
+    if args.handle_callback is not None:
+        tg = Telegram(token, _allowed_chat())
+        try:
+            cq = json.loads(args.handle_callback)
+        except Exception as e:
+            print(f"bad --handle-callback JSON: {type(e).__name__}",
+                  file=sys.stderr)
+            return 1
+        _handle_callback(tg, cq)
+        return 0
+
     offset = _load_offset()
 
     if args.once:

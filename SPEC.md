@@ -303,11 +303,25 @@ block, which renders as monospace with a native one-tap/long-press copy
 action and returns the exact text with no markdown or HTML artifacts —
 no separate "export" step needed.
 
-**Not yet built:** always-on hosting. `social_bot.py` runs today as a
-local/manual poller (`python -m src.social_bot`), same starting point
-`bot.py` had before the Cloudflare Worker existed. Wiring it to run 24/7
-is a fast-follow, not a blocker — PJ can draft right now by running the
-process while at his laptop.
+**Built (2026-08-07): 24/7, no laptop dependency.** The existing
+Cloudflare Worker that already serves the job bot (`worker/worker.js`)
+takes a second route, `/social` — same Cloudflare account, same GitHub
+PAT, same `GH_REPO` secret, one new secret (`SOCIAL_BOT_TOKEN`). It
+dispatches to a new, fully independent Actions workflow
+(`.github/workflows/social.yml`) that runs `social_bot.py` in one-shot
+mode (`--handle-message` / `--handle-callback`) and exits — no polling
+loop in production. The local polling loop (`python -m src.social_bot`)
+still exists for offline testing only; it must not run at the same time
+as the webhook, same rule as the job bot (see `worker/README.md`).
+
+Deployment, once `wrangler deploy` picks up the updated `worker.js`:
+1. `wrangler secret put SOCIAL_BOT_TOKEN` (same Worker, additive)
+2. Add `SOCIAL_BOT_TOKEN` as a GitHub Actions repo secret too (Actions
+   and the Worker both need it, independently)
+3. Register the second webhook:
+   `curl -X POST "https://api.telegram.org/bot<SOCIAL_BOT_TOKEN>/setWebhook" -d "url=https://job-scout-bot.<subdomain>.workers.dev/social" -d "secret_token=<WEBHOOK_SECRET>"`
+   (same `WEBHOOK_SECRET` already in use for the job bot — one shared
+   secret authenticates both routes)
 
 **Cost:** ₹0. Gemini and Telegram are the same free tiers the job
 pipeline already uses; there is nothing LinkedIn-side to pay for or

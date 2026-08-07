@@ -97,3 +97,34 @@ curl "https://api.telegram.org/bot<BOT_TOKEN>/deleteWebhook"
 **Rotating the bot token.** It must be updated in three places: the repo
 secret `TELEGRAM_BOT_TOKEN`, the Worker secret `BOT_TOKEN`, and the
 `setWebhook` call in step 6.
+
+---
+
+## Second bot: LinkedIn drafts
+
+Same Worker, same deploy, one extra route (`/social`) — see the comment
+at the top of `worker.js`. It is a fully independent bot (own token, own
+Actions workflow `social.yml`, own database `data/social.db`); sharing
+the Worker is purely infrastructure reuse, not shared logic.
+
+### Setup (after doing steps 1-4 above once, for the job bot)
+
+```bash
+# One more secret, same Worker:
+wrangler secret put SOCIAL_BOT_TOKEN
+
+# Also add SOCIAL_BOT_TOKEN as a GitHub Actions repo secret — Actions
+# and the Worker both call the Telegram API with it, independently.
+
+# Re-deploy so the "/social" route goes live:
+wrangler deploy
+
+# Point the second bot's webhook at the SAME Worker, different path:
+curl -X POST "https://api.telegram.org/bot<SOCIAL_BOT_TOKEN>/setWebhook" \
+  -d "url=https://job-scout-bot.<subdomain>.workers.dev/social" \
+  -d "secret_token=<WEBHOOK_SECRET>"
+```
+
+Reuses `CHAT_ID`, `WEBHOOK_SECRET`, `GH_TOKEN`, `GH_REPO` — nothing new
+there. Verify with `/help` in the LinkedIn bot's chat; then send it any
+text and a draft should arrive within a few seconds.

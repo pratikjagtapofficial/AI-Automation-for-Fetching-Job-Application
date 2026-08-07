@@ -11,12 +11,23 @@
  * SQLite tracker, so anything needing real data is dispatched to Actions
  * via repository_dispatch and the workflow answers in Telegram directly.
  *
+ * One Worker, two bots. The job-scout bot is served at "/" (unchanged
+ * below). The LinkedIn draft bot (src/social_bot.py) is served at
+ * "/social" — same account, same GH_TOKEN/GH_REPO, same deploy, just one
+ * extra secret (SOCIAL_BOT_TOKEN) and a second webhook registration.
+ * They are still fully independent bots: different token, different
+ * Actions workflow (social.yml vs scout.yml), different database
+ * (data/social.db vs data/jobs.db). Sharing the Worker is purely an
+ * infrastructure convenience — routing only, no logic is shared between
+ * the two bots below.
+ *
  * Secrets (wrangler secret put ...):
- *   BOT_TOKEN       Telegram bot token
- *   CHAT_ID         the only chat served
- *   WEBHOOK_SECRET  matches setWebhook's secret_token
- *   GH_TOKEN        fine-grained PAT, Actions:write on the repo
- *   GH_REPO         owner/name
+ *   BOT_TOKEN         job-scout bot token
+ *   SOCIAL_BOT_TOKEN  LinkedIn draft bot token
+ *   CHAT_ID           the only chat served (same person, both bots)
+ *   WEBHOOK_SECRET    matches setWebhook's secret_token (both bots)
+ *   GH_TOKEN          fine-grained PAT, Actions:write on the repo
+ *   GH_REPO           owner/name
  */
 
 const INSTANT = {
@@ -48,8 +59,8 @@ function help() {
   ].join("\n");
 }
 
-async function send(env, text) {
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+async function send(env, botToken, text) {
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -61,7 +72,21 @@ async function send(env, text) {
   });
 }
 
-async function dispatch(env, command) {
+// Telegram requires this within ~a few seconds of a button tap, or the
+// client shows a stuck loading spinner. The Worker answers immediately;
+// the actual work still goes through dispatch() below.
+async function answerCallback(env, botToken, callbackId, text) {
+  await fetch(
+    `https://api.telegram.org/bot${botToken}/answerCallbackQuery`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackId, text }),
+    },
+  );
+}
+
+async function dispatch(env, eventType, payload) {
   const r = await fetch(
     `https://api.github.com/repos/${env.GH_REPO}/dispatches`,
     {
@@ -74,12 +99,146 @@ async function dispatch(env, command) {
         "user-agent": "job-scout-worker",
       },
       body: JSON.stringify({
-        event_type: "telegram-command",
-        client_payload: { command },
+        event_type: eventType,
+        client_payload: payload,
       }),
     },
   );
   return r.status === 204;
+}
+
+function socialHelp() {
+  return [
+    "<b>LinkedIn draft bot</b>",
+    "",
+    "Send any text — a topic, a bullet, a raw idea — and I'll draft a " +
+      "post from it and send it back in a tap-to-copy block. Paste it " +
+      "into LinkedIn yourself; this bot never posts anything on its own.",
+    "",
+    "/drafts — pending drafts",
+    "/status — recent activity",
+    "/help — this message",
+  ].join("\n");
+}
+
+async function handleJobBot(request, env, ctx) {
+  let update;
+  try {
+    update = await request.json();
+  } catch {
+    return new Response("bad json", { status: 400 });
+  }
+
+  const msg = update.message || update.edited_message;
+  if (!msg) return new Response("ok", { status: 200 });
+
+  // Only PJ's chat is served. The bot username is guessable, so without
+  // this anyone who finds it could query his job pipeline.
+  if (String(msg.chat?.id) !== String(env.CHAT_ID)) {
+    return new Response("ok", { status: 200 });
+  }
+
+  const text = (msg.text || "").trim();
+  if (!text) return new Response("ok", { status: 200 });
+
+  const cmd = text.split(/\s+/)[0].toLowerCase();
+
+  if (INSTANT[cmd]) {
+    ctx.waitUntil(send(env, env.BOT_TOKEN, INSTANT[cmd]));
+    return new Response("ok", { status: 200 });
+  }
+
+  const needsWork = DISPATCHED.includes(cmd) || !text.startsWith("/");
+
+  if (needsWork) {
+    // Acknowledge immediately, then dispatch. Telegram retries a
+    // webhook that does not return promptly, which would duplicate the
+    // command.
+    ctx.waitUntil(
+      (async () => {
+        const ok = await dispatch(env, "telegram-command", { command: text });
+        if (!ok) {
+          await send(
+            env,
+            env.BOT_TOKEN,
+            "⚠️ Could not reach GitHub to run that.\n" +
+              "<i>Scheduled scans are unaffected.</i>",
+          );
+        }
+      })(),
+    );
+    return new Response("ok", { status: 200 });
+  }
+
+  ctx.waitUntil(
+    send(env, env.BOT_TOKEN, `Unknown command: <code>${cmd}</code>\n\n${help()}`),
+  );
+  return new Response("ok", { status: 200 });
+}
+
+// Fully independent from handleJobBot above — different token, different
+// Actions workflow (social.yml), different database. Drafting needs a
+// Gemini call, which the Worker cannot wait on reliably, so almost
+// everything here dispatches to Actions rather than answering inline.
+async function handleSocialBot(request, env, ctx) {
+  let update;
+  try {
+    update = await request.json();
+  } catch {
+    return new Response("bad json", { status: 400 });
+  }
+
+  const cq = update.callback_query;
+  if (cq) {
+    if (String(cq.message?.chat?.id) !== String(env.CHAT_ID)) {
+      return new Response("ok", { status: 200 });
+    }
+    // Answer right away so the tap doesn't spin; the real work (mark
+    // posted / discard bookkeeping) happens in the dispatched workflow.
+    ctx.waitUntil(answerCallback(env, env.SOCIAL_BOT_TOKEN, cq.id, ""));
+    ctx.waitUntil(
+      dispatch(env, "social-callback", {
+        callback: {
+          id: cq.id,
+          data: cq.data,
+          message: { message_id: cq.message?.message_id },
+        },
+      }),
+    );
+    return new Response("ok", { status: 200 });
+  }
+
+  const msg = update.message || update.edited_message;
+  if (!msg) return new Response("ok", { status: 200 });
+
+  if (String(msg.chat?.id) !== String(env.CHAT_ID)) {
+    return new Response("ok", { status: 200 });
+  }
+
+  const text = (msg.text || "").trim();
+  if (!text) return new Response("ok", { status: 200 });
+
+  if (text === "/help" || text === "/start") {
+    ctx.waitUntil(send(env, env.SOCIAL_BOT_TOKEN, socialHelp()));
+    return new Response("ok", { status: 200 });
+  }
+
+  // Everything else — /status, /drafts, or freeform context for a new
+  // draft — needs Python (Gemini, config/social_strategy.md,
+  // data/social.db), so it all goes to Actions.
+  ctx.waitUntil(
+    (async () => {
+      const ok = await dispatch(env, "social-draft", { text });
+      if (!ok) {
+        await send(
+          env,
+          env.SOCIAL_BOT_TOKEN,
+          "⚠️ Could not reach GitHub to draft that. Try again shortly.",
+        );
+      }
+    })(),
+  );
+  return new Response("ok", { status: 200 });
 }
 
 export default {
@@ -95,55 +254,10 @@ export default {
       return new Response("forbidden", { status: 403 });
     }
 
-    let update;
-    try {
-      update = await request.json();
-    } catch {
-      return new Response("bad json", { status: 400 });
+    const path = new URL(request.url).pathname;
+    if (path === "/social") {
+      return handleSocialBot(request, env, ctx);
     }
-
-    const msg = update.message || update.edited_message;
-    if (!msg) return new Response("ok", { status: 200 });
-
-    // Only PJ's chat is served. The bot username is guessable, so without
-    // this anyone who finds it could query his job pipeline.
-    if (String(msg.chat?.id) !== String(env.CHAT_ID)) {
-      return new Response("ok", { status: 200 });
-    }
-
-    const text = (msg.text || "").trim();
-    if (!text) return new Response("ok", { status: 200 });
-
-    const cmd = text.split(/\s+/)[0].toLowerCase();
-
-    if (INSTANT[cmd]) {
-      ctx.waitUntil(send(env, INSTANT[cmd]));
-      return new Response("ok", { status: 200 });
-    }
-
-    const needsWork =
-      DISPATCHED.includes(cmd) || !text.startsWith("/");
-
-    if (needsWork) {
-      // Acknowledge immediately, then dispatch. Telegram retries a
-      // webhook that does not return promptly, which would duplicate the
-      // command.
-      ctx.waitUntil(
-        (async () => {
-          const ok = await dispatch(env, text);
-          if (!ok) {
-            await send(
-              env,
-              "⚠️ Could not reach GitHub to run that.\n" +
-                "<i>Scheduled scans are unaffected.</i>",
-            );
-          }
-        })(),
-      );
-      return new Response("ok", { status: 200 });
-    }
-
-    ctx.waitUntil(send(env, `Unknown command: <code>${cmd}</code>\n\n${help()}`));
-    return new Response("ok", { status: 200 });
+    return handleJobBot(request, env, ctx);
   },
 };

@@ -1,0 +1,80 @@
+name: LinkedIn Draft Bot
+
+# Fully independent from scout.yml — separate trigger events, separate
+# secrets, separate database (data/social.db, never data/jobs.db). The
+# Cloudflare Worker (worker/worker.js, "/social" route) receives the
+# Telegram webhook and dispatches here; this workflow does the actual
+# work (a Gemini call, mostly) and replies in Telegram directly.
+on:
+  repository_dispatch:
+    types: [social-draft, social-callback]
+
+# A slow draft must never block a callback tap, or vice versa — no
+# shared concurrency group with scout.yml either.
+concurrency:
+  group: social-bot
+  cancel-in-progress: false
+
+permissions:
+  contents: write            # to commit the updated drafts DB
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5       # a draft is one Gemini call, not a scan
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        # No Playwright here — this bot never opens a browser.
+        run: pip install httpx PyYAML
+
+      - name: Handle drafted-message event
+        # DRAFT_TEXT goes through `env:`, not string-interpolated into
+        # `run:` — that's the difference between safe and a shell/script
+        # injection hole, since client_payload.text is attacker-shaped
+        # input (anyone who finds the bot could send arbitrary text).
+        if: github.event.action == 'social-draft'
+        env:
+          SOCIAL_BOT_TOKEN: ${{ secrets.SOCIAL_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DRAFT_TEXT: ${{ github.event.client_payload.text }}
+        run: python -m src.social_bot --handle-message "$DRAFT_TEXT"
+
+      - name: Handle callback event
+        if: github.event.action == 'social-callback'
+        env:
+          SOCIAL_BOT_TOKEN: ${{ secrets.SOCIAL_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CALLBACK_JSON: ${{ toJSON(github.event.client_payload.callback) }}
+        run: python -m src.social_bot --handle-callback "$CALLBACK_JSON"
+
+      - name: Persist drafts DB
+        # Same reasoning as scout.yml's tracker commit: Actions runners
+        # are ephemeral, so without this, draft IDs and "posted" history
+        # would vanish after every run.
+        run: |
+          git config user.name  "social-bot[bot]"
+          git config user.email "social-bot@users.noreply.github.com"
+          git add data/social.db
+          git diff --staged --quiet || git commit -m "drafts: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          SOCIAL_BOT_TOKEN: ${{ secrets.SOCIAL_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${SOCIAL_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode=HTML \
+            -d text="🚨 <b>Social bot run failed</b>%0ARun: ${{ github.run_id }}%0A<a href='https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View logs →</a>"
