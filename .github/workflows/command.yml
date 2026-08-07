@@ -37,6 +37,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          # Without this, every free-text message (the whole point of
+          # nlu.py) silently fell back to the old "treat it as a company
+          # name" behaviour -- confirmed live: "apply to all" kept
+          # producing "No record for apply to all" in production even
+          # after nlu.py was merged, because this job never had a key to
+          # call Gemini with. Only the separate scan job below had one.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python -m src.command_runner "${{ github.event.client_payload.command }}"
 
       - name: Persist any Answer Bank change
