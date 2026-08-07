@@ -21,7 +21,8 @@ from .notify import Telegram
 
 
 def run(text: str) -> int:
-    text = (text or "").strip()
+    original = (text or "").strip()
+    text = original
     if not text:
         return 0
 
@@ -36,6 +37,10 @@ def run(text: str) -> int:
     direct = None
     if not text.startswith("/"):
         text, direct = nlu.resolve(text)
+        # Printed to the Actions log (not sent to PJ) so a silent
+        # Gemini-unavailable fallback is visible in logs instead of only
+        # showing up as an oddly generic reply with no obvious cause.
+        print(f"nlu: {original!r} -> command={text!r} direct={bool(direct)}")
         if direct:
             tg.send(direct)
             return 0
