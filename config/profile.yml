@@ -219,3 +219,8 @@ limits:
   # Each preparation drives a real browser (~25s), so this bounds both
   # runtime and Actions minutes.
   max_prepare_per_run: 4
+
+  # Instahyre's API has no JD text; a real browser fetch of each
+  # shortlisted job page is needed to verify experience. Bounded because
+  # each fetch launches Chromium (~3-5s); default covers a normal shortlist.
+  max_instahyre_enrich: 20

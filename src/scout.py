@@ -26,7 +26,8 @@ from . import hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
 from .render import render
-from .scorer import score_all
+from .scorer import (_blacklisted, _excluded_title, _in_scope_location,
+                     _title_matches, score_all)
 from .tailor import tailor
 from .sources import fetch_all
 
@@ -145,12 +146,34 @@ def main() -> int:
         errors.append(f"hirist: {type(e).__name__}")
         print(f"hirist          : FAILED {e}")
 
-    # ── 4. Instahyre (free JSON API; publishes no posting dates) ───
+    # ── 4. Instahyre (free JSON API; no posting dates, no JD text) ──
+    # The API never returns a description body or a years-of-experience
+    # figure -- measured at 0/60 sampled listings. Scoring these directly
+    # would silently skip the experience check for the whole source, so
+    # cheap filters run first (title/location/blacklist, all free) and
+    # only that shortlist gets a real browser fetch of the public job
+    # page, which does show the real band (e.g. "5-9 Years") and JD.
     try:
         i_jobs, i_errs = instahyre.fetch()
-        all_jobs += i_jobs
-        errors += i_errs
         print(f"instahyre       : {len(i_jobs)} postings")
+        shortlist = [
+            j for j in i_jobs
+            if _title_matches(j.title, profile)
+            and not _excluded_title(j.title, profile)
+            and _in_scope_location(j.location)[0]
+            and not _blacklisted(j.company, "", profile)
+        ]
+        print(f"  -> {len(shortlist)} pass cheap filters, "
+              f"enriching up to {profile['limits'].get('max_instahyre_enrich', 20)}")
+        enriched, e_errs = asyncio.run(instahyre.enrich(
+            shortlist, profile["limits"].get("max_instahyre_enrich", 20)))
+        cap = profile["limits"].get("max_instahyre_enrich", 20)
+        # Anything beyond the enrichment budget has no verified experience
+        # band. Cowork's own rule for an unverifiable listing is to drop
+        # it rather than pad the count -- so it is excluded here, not
+        # merged in as if it had passed.
+        all_jobs += enriched[:cap]
+        errors += i_errs + e_errs
     except Exception as e:
         errors.append(f"instahyre: {type(e).__name__}")
         print(f"instahyre       : FAILED {e}")
