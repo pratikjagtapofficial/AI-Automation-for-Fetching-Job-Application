@@ -43,6 +43,7 @@ const INSTANT = {
 const DISPATCHED = [
   "/scan", "/status", "/recent", "/pending", "/questions",
   "/answer", "/brief", "/diff", "/resume",
+  "/jd", "/applied", "/note",   // Phase 5 call-prep commands
 ];
 
 function help() {
@@ -58,8 +59,11 @@ function help() {
     "/brief &lt;company&gt; — what did I send them?",
     "/diff &lt;company&gt; — resume changes for that job",
     "/resume &lt;company&gt; — send the tailored PDF",
+    "/jd &lt;company&gt; — job description as it was when you applied",
+    "/applied &lt;company&gt; — mark that you actually submitted it",
+    "/note &lt;company&gt; &lt;text&gt; — save a note after a call",
     "",
-    "<i>Or just type a company name to look it up.</i>",
+    "<i>Or just talk normally — the bot understands plain English too.</i>",
   ].join("\n");
 }
 
