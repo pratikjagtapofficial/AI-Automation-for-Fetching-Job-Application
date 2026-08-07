@@ -13,21 +13,25 @@
  *
  * One Worker, two bots. The job-scout bot is served at "/" (unchanged
  * below). The LinkedIn draft bot (src/social_bot.py) is served at
- * "/social" — same account, same GH_TOKEN/GH_REPO, same deploy, just one
- * extra secret (SOCIAL_BOT_TOKEN) and a second webhook registration.
- * They are still fully independent bots: different token, different
- * Actions workflow (social.yml vs scout.yml), different database
- * (data/social.db vs data/jobs.db). Sharing the Worker is purely an
- * infrastructure convenience — routing only, no logic is shared between
- * the two bots below.
+ * "/social" — same account, same GH_TOKEN/GH_REPO, same deploy, just two
+ * extra secrets (SOCIAL_BOT_TOKEN, SOCIAL_WEBHOOK_SECRET) and a second
+ * webhook registration. They are fully independent bots: different
+ * token, different webhook secret, different Actions workflow
+ * (social.yml vs scout.yml), different database (data/social.db vs
+ * data/jobs.db). Sharing the Worker is purely infrastructure reuse —
+ * routing only, no logic or secret is shared between the two bots below.
  *
  * Secrets (wrangler secret put ...):
- *   BOT_TOKEN         job-scout bot token
- *   SOCIAL_BOT_TOKEN  LinkedIn draft bot token
- *   CHAT_ID           the only chat served (same person, both bots)
- *   WEBHOOK_SECRET    matches setWebhook's secret_token (both bots)
- *   GH_TOKEN          fine-grained PAT, Actions:write on the repo
- *   GH_REPO           owner/name
+ *   BOT_TOKEN             job-scout bot token
+ *   SOCIAL_BOT_TOKEN      LinkedIn draft bot token
+ *   CHAT_ID               the only chat served (same person, both bots)
+ *   WEBHOOK_SECRET        job-scout bot's setWebhook secret_token
+ *   SOCIAL_WEBHOOK_SECRET LinkedIn bot's setWebhook secret_token — a
+ *                         DIFFERENT value from WEBHOOK_SECRET, on
+ *                         purpose. Do not reuse one for both; that was
+ *                         the exact bug fixed on 2026-08-07.
+ *   GH_TOKEN              fine-grained PAT, Actions:write on the repo
+ *   GH_REPO               owner/name
  */
 
 const INSTANT = {
@@ -247,15 +251,22 @@ export default {
       return new Response("ok", { status: 200 });
     }
 
-    // Telegram echoes the secret configured via setWebhook. Without this
-    // check the endpoint is a public URL that anyone could POST to.
+    const path = new URL(request.url).pathname;
+    const isSocial = path === "/social";
+
+    // Each bot gets its OWN webhook secret, not a shared one. This is
+    // deliberate: on 2026-08-07 a shared WEBHOOK_SECRET meant rotating it
+    // for one bot silently broke the other's webhook (403s with no
+    // visible error until someone checked getWebhookInfo). Splitting
+    // these means re-registering, rotating, or debugging one bot's
+    // webhook can never again require touching the other's.
+    const expected = isSocial ? env.SOCIAL_WEBHOOK_SECRET : env.WEBHOOK_SECRET;
     const secret = request.headers.get("x-telegram-bot-api-secret-token");
-    if (!env.WEBHOOK_SECRET || secret !== env.WEBHOOK_SECRET) {
+    if (!expected || secret !== expected) {
       return new Response("forbidden", { status: 403 });
     }
 
-    const path = new URL(request.url).pathname;
-    if (path === "/social") {
+    if (isSocial) {
       return handleSocialBot(request, env, ctx);
     }
     return handleJobBot(request, env, ctx);

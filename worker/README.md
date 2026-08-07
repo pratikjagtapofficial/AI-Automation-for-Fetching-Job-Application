@@ -110,8 +110,13 @@ the Worker is purely infrastructure reuse, not shared logic.
 ### Setup (after doing steps 1-4 above once, for the job bot)
 
 ```bash
-# One more secret, same Worker:
+# Two new secrets, same Worker. SOCIAL_WEBHOOK_SECRET must be a
+# DIFFERENT value from WEBHOOK_SECRET — do not reuse it. A shared
+# webhook secret means rotating or debugging one bot's webhook can
+# silently break the other's (this happened on 2026-08-07: the job
+# bot's webhook broke as a side effect of fixing the LinkedIn bot's).
 wrangler secret put SOCIAL_BOT_TOKEN
+wrangler secret put SOCIAL_WEBHOOK_SECRET
 
 # Also add SOCIAL_BOT_TOKEN as a GitHub Actions repo secret — Actions
 # and the Worker both call the Telegram API with it, independently.
@@ -119,12 +124,16 @@ wrangler secret put SOCIAL_BOT_TOKEN
 # Re-deploy so the "/social" route goes live:
 wrangler deploy
 
-# Point the second bot's webhook at the SAME Worker, different path:
+# Point the second bot's webhook at the SAME Worker, different path,
+# with its OWN secret_token:
 curl -X POST "https://api.telegram.org/bot<SOCIAL_BOT_TOKEN>/setWebhook" \
   -d "url=https://job-scout-bot.<subdomain>.workers.dev/social" \
-  -d "secret_token=<WEBHOOK_SECRET>"
+  -d "secret_token=<SOCIAL_WEBHOOK_SECRET>"
 ```
 
-Reuses `CHAT_ID`, `WEBHOOK_SECRET`, `GH_TOKEN`, `GH_REPO` — nothing new
-there. Verify with `/help` in the LinkedIn bot's chat; then send it any
+Reuses `CHAT_ID`, `GH_TOKEN`, `GH_REPO` — nothing new there.
+`WEBHOOK_SECRET` (the job bot's) is untouched by any of this, and the
+job bot's own `setWebhook` call never needs to be re-run when setting
+up or rotating the LinkedIn bot. Verify with `/help` in the LinkedIn
+bot's chat; then send it any
 text and a draft should arrive within a few seconds.
