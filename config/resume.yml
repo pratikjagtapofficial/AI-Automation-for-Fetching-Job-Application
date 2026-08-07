@@ -1,6 +1,12 @@
 # Structured resume — the tailoring source of truth.
 #
-# Derived from Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf.
+# Base changed 2026-08-07 to Pratik_Jagtap_Resume_Jr_AIML_Engineer.pdf, per
+# PJ's instruction: keep THIS resume — same layout, same colours — and
+# tailor per JD from here on. Bullet ids are unchanged from the prior
+# base so nothing downstream (tailor.py, validator.py, the stored
+# tailoring history in the tracker) needed restructuring — only the
+# wording, headline, summary and skill groupings changed to match this
+# file's actual content, verbatim.
 #
 # WHY YAML AND NOT THE .docx:
 # Tailoring means selecting and rephrasing *specific bullets* per job.
@@ -17,8 +23,8 @@
 #  * `locked: true` means never rewrite (facts, dates, titles).
 
 meta:
-  source_pdf: Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf
-  parsed: 2026-08-06
+  source_pdf: Pratik_Jagtap_Resume_Jr_AIML_Engineer.pdf
+  parsed: 2026-08-07
   target_pages: 1        # a fresher resume that spills to 2 pages reads badly
 
 contact:
@@ -33,46 +39,46 @@ contact:
 # Rewritten per job — this is the highest-leverage tailoring target,
 # since ATS keyword matching weighs the top of the document heavily.
 headline:
-  default: "Agentic AI Engineer | GenAI Developer | LLMs, RAG & MCP"
+  default: "Jr. AI/ML Engineer | Machine Learning, LLMs & RAG"
   variants:
-    genai:    "GenAI Engineer | LLMs, RAG & Prompt Engineering"
-    agentic:  "Agentic AI Engineer | Multi-Agent Systems, MCP & LangChain"
-    ml:       "AI/ML Engineer | Python, ML Pipelines & LLM Applications"
-    backend:  "AI Developer | Python, FastAPI & LLM-Powered Services"
+    ml:       "Jr. AI/ML Engineer | Machine Learning, LLMs & RAG"
+    genai:    "AI/ML Engineer | GenAI, RAG & Prompt Engineering"
+    backend:  "AI/ML Engineer | Python, FastAPI & ML Pipelines"
+    data:     "AI/ML Engineer | Predictive Modeling & Feature Engineering"
 
 summary:
   default: >-
-    Agentic AI / GenAI Developer with hands-on experience designing, building,
-    and deploying AI Agents, Large Language Model (LLM)-powered applications,
-    and Retrieval-Augmented Generation (RAG) pipelines that automate complex,
-    multi-step business workflows. Experienced across the Model Context
-    Protocol (MCP), Claude Code, LangChain, and vector database ecosystems,
-    with a strong foundation in prompt engineering, Python development, and
-    API integration. Skilled in owning the full GenAI product lifecycle — from
-    architecture through production deployment — and translating ambiguous
-    business problems into scalable, unified AI platforms.
+    AI/ML Engineer with hands-on experience across the full machine learning
+    workflow — data preprocessing, feature engineering, model building, and
+    evaluation — using Python, Pandas, and Scikit-learn. Skilled in applying
+    Generative AI and Large Language Models (LLMs), including
+    Retrieval-Augmented Generation (RAG) pipelines and prompt engineering, to
+    turn data into actionable insights and automate real business workflows.
+    Comfortable owning projects end-to-end, from data to model to production.
   max_words: 90
 
 skills:
   # Order is tailored per JD; membership is not. The Validator blocks any
-  # addition that is not already present here.
+  # addition that is not already present here. Groups and items match
+  # Pratik_Jagtap_Resume_Jr_AIML_Engineer.pdf verbatim — note Agentic AI,
+  # Multi-Agent Systems and LangGraph are NOT on this base (they were on
+  # the prior Agentic-AI-framed resume). They stay available to the tailor
+  # via profile.yml skills.has, since PJ genuinely has them; they are just
+  # not part of this resume's own skills block unless a JD calls for them.
   groups:
-    - name: "Agentic AI & GenAI"
-      items: [AI Agents, Multi-Agent Systems, Agentic AI,
-              Model Context Protocol (MCP), Agent-to-Agent (A2A) Protocol,
-              LangChain, LangGraph, Retrieval-Augmented Generation (RAG),
-              Prompt Engineering]
-    - name: "LLMs & AI Platforms"
-      items: [Claude Code, Gemini, GPT (via Codex), Large Language Models (LLMs)]
-    - name: "Programming & Frameworks"
-      items: [Python, SQL, FastAPI, Streamlit]
-    - name: "Retrieval & Vector Search"
-      items: [Vector Databases, PostgreSQL, PageIndex, Semantic Search]
-    - name: "Machine Learning & Data Science"
-      items: [XGBoost, LSTM, Scikit-learn, NLP, Time-Series Forecasting,
-              Predictive Modeling, Feature Engineering]
-    - name: "Cloud, Infra & Dev Tools"
-      items: [DigitalOcean, Vultr, Cloudflare, Git/GitHub, REST API Integration]
+    - name: "Machine Learning"
+      items: [Model Building & Evaluation, XGBoost, LSTM, Scikit-learn, NLP,
+              Time-Series Forecasting, Predictive Modeling, Feature Engineering]
+    - name: "Programming & Data"
+      items: [Python, Pandas, SQL, FastAPI, Streamlit]
+    - name: "GenAI & LLMs"
+      items: [Retrieval-Augmented Generation (RAG), LangChain,
+              Prompt Engineering, Model Context Protocol (MCP), Claude Code,
+              Gemini, GPT (via Codex)]
+    - name: "Data & Retrieval"
+      items: [Vector Databases, PostgreSQL, Semantic Search, PageIndex]
+    - name: "Tools & Infra"
+      items: [Git/GitHub, REST API Integration, DigitalOcean, Vultr, Cloudflare]
 
 experience:
   - id: hiretalent
@@ -85,20 +91,20 @@ experience:
     bullets:
       - id: ht1
         text: >-
-          Design and develop AI agents that automate repetitive, manual tasks
-          across teams, reducing operational overhead.
-        tags: [AI Agents, Agentic AI, Python]
+          Build and evaluate ML/AI models and agents that automate repetitive,
+          manual tasks across teams, reducing operational overhead.
+        tags: [Model Building & Evaluation, Python]
       - id: ht2
         text: >-
-          Architect an enterprise application integrating LLMs and RAG
-          pipelines with vector databases, consolidating fragmented workflows
-          into one unified AI platform.
-        tags: [LLMs, RAG, Vector Databases, Agentic AI]
+          Process and structure data from multiple internal systems to feed
+          LLM and RAG pipelines integrated with vector databases,
+          consolidating fragmented workflows into one unified AI platform.
+        tags: [Retrieval-Augmented Generation (RAG), Vector Databases]
       - id: ht3
         text: >-
-          Integrate third-party and internal APIs into agentic workflows,
+          Integrate third-party and internal APIs into ML-driven workflows,
           enabling reliable, end-to-end automation across enterprise systems.
-        tags: [REST API Integration, Agentic AI, Python]
+        tags: [REST API Integration, Python]
 
   - id: rubixe
     locked_fields: [role, company, from, to]
@@ -109,57 +115,59 @@ experience:
     bullets:
       - id: rx1
         text: >-
-          Supported an AI and data science consulting engagement, applying data
-          analysis and ML techniques to solve business problems for enterprise
-          clients.
-        tags: [Scikit-learn, NLP, Predictive Modeling]
+          Applied data analysis and machine learning techniques — using
+          Python, Pandas, and Scikit-learn — to solve business problems for
+          enterprise clients.
+        tags: [Python, Pandas, Scikit-learn]
       - id: rx2
         text: >-
-          Developed and evaluated predictive models, performing data
-          preprocessing and feature engineering to improve model accuracy.
+          Developed and evaluated predictive models end-to-end, performing
+          data preprocessing and feature engineering to improve model
+          accuracy.
         tags: [Predictive Modeling, Feature Engineering, XGBoost, Scikit-learn]
       - id: rx3
         text: >-
           Translated analytical findings into actionable business
-          recommendations through structured, AI-driven reporting.
-        tags: [NLP, Predictive Modeling]
+          recommendations through structured, data-driven reporting.
+        tags: [Predictive Modeling, NLP]
 
 projects:
   - id: agent_neo
-    name: "Agent Neo — Unified AI Application for Recruitment Automation"
+    name: "Agent Neo – Unified AI Application for Recruitment Automation"
     from: 2026-05
     to: present
     bullets:
       - id: an1
         text: >-
-          Contributing to an AI application automating high-volume recruitment
-          tasks — sourcing, screening, submission — using LangChain, RAG, and
-          vector databases.
-        tags: [LangChain, RAG, Vector Databases, Agentic AI]
+          Built ML/AI pipelines automating high-volume recruitment tasks —
+          sourcing, screening, submission — using LangChain, RAG, and vector
+          databases.
+        tags: [LangChain, Retrieval-Augmented Generation (RAG), Vector Databases]
       - id: an2
         text: >-
-          Deploying the platform on Vultr with PostgreSQL, engineered for scale
-          to reduce manual recruiter effort.
+          Deployed the platform on Vultr with PostgreSQL, engineered for
+          scale to reduce manual recruiter effort.
         tags: [Vultr, PostgreSQL]
 
   - id: juno
-    name: "Juno — Onboarding Agent for New Joiners"
+    name: "Juno – Onboarding Agent for New Joiners"
     from: 2026-06
     to: 2026-07
     bullets:
       - id: ju1
         text: >-
-          Built an onboarding agent guiding new hires through company culture,
-          policies, and processes using internal documents and video content.
-        tags: [AI Agents, RAG, LangChain]
+          Built a model-driven onboarding agent guiding new hires through
+          company culture, policies, and processes using internal documents
+          and video content.
+        tags: [Retrieval-Augmented Generation (RAG), LangChain]
       - id: ju2
         text: >-
           Reduced manual onboarding effort with a self-serve resource for new
           joiners to get up to speed before day one.
-        tags: [AI Agents]
+        tags: [Model Building & Evaluation]
 
   - id: spy
-    name: "SPY — CCTV Monitoring Agent"
+    name: "SPY – CCTV Monitoring Agent"
     from: 2026-07
     to: present
     bullets:
@@ -170,21 +178,17 @@ projects:
         tags: [YOLO, Computer Vision, Cloudflare]
       - id: sp2
         text: >-
-          Building real-time event detection and automated reporting to reduce
-          manual surveillance review.
-        tags: [Computer Vision, YOLO]
+          Building real-time event detection and automated reporting models
+          to reduce manual surveillance review.
+        tags: [Computer Vision, YOLO, Model Building & Evaluation]
 
 education:
   locked: true
   items:
-    # "to: 2026-06" previously read as an awarded degree. It is not
-    # awarded, so the status reads "Pursuing" — that is the honest and
-    # load-bearing part, and it must not be changed back to a date.
-    #
-    # The reason it is pending is deliberately NOT printed. A resume
-    # states status, not circumstances, and "Pursuing" already tells a
-    # reader the degree is not conferred. PJ answers the why in
-    # conversation; his wording is in answers.yml as mca_explanation.
+    # "to: Pursuing" is the honest and load-bearing part — the MCA is not
+    # awarded, coursework is complete but the final project is pending.
+    # The reason is deliberately NOT printed here; PJ's own wording for
+    # when it's asked directly lives in answers.yml as mca_explanation.
     - degree: Master of Computer Applications (MCA)
       institution: Sinhgad Institute of Management, Pune
       from: 2024-09
@@ -199,12 +203,12 @@ education:
 certifications:
   locked: true
   items:
-    - IABAC — Certified Data Scientist
-    - IABAC — Artificial Intelligence Expert Certification
-    - AI Engineer Certification, DataMites Global Institute
+    - IABAC – Certified Data Scientist
+    - IABAC – Artificial Intelligence Expert Certification
+    - AI Engineer Certification, Data Mites Global Institute
 
 achievements:
   locked: true
   items:
     - 1st Place, 3D Model Design Competition
-    - CybageKhushboo Scholarship, Khushboo Charitable Trust
+    - Cybage Khushboo Scholarship, Khushboo Charitable Trust

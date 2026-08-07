@@ -80,16 +80,18 @@ skills:
     agentic_genai:
       [AI Agents, Multi-Agent Systems, Agentic AI, Model Context Protocol, MCP,
        Agent-to-Agent Protocol, A2A, LangChain, LangGraph, RAG,
-       Retrieval-Augmented Generation, Prompt Engineering]
+       Retrieval-Augmented Generation, Retrieval-Augmented Generation (RAG),
+       Prompt Engineering]
     llm_platforms:
       [Claude Code, Gemini, GPT, Large Language Models, LLMs]
     programming:
-      [Python, SQL, FastAPI, Streamlit, REST API]
+      [Python, SQL, FastAPI, Streamlit, REST API, REST API Integration]
     retrieval:
       [Vector Databases, PostgreSQL, PageIndex, Semantic Search]
     ml_ds:
       [XGBoost, LSTM, Scikit-learn, NLP, Time-Series Forecasting,
-       Predictive Modeling, Feature Engineering]
+       Predictive Modeling, Feature Engineering, Model Building & Evaluation,
+       Pandas]
     vision:
       [YOLO, Computer Vision]
     cloud_infra:

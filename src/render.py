@@ -1,17 +1,22 @@
 """Render resume.yml (+ optional tailoring) to a PDF matching PJ's own
-template layout: Pratik_Jagtap_Resume_AI_Developer28-07-2026.pdf.
+template layout: Pratik_Jagtap_Resume_Jr_AIML_Engineer.pdf (base changed
+2026-08-07 from the earlier Agentic-AI-framed resume, per PJ).
 
 Only the WORDS are tailored per job — the layout is fixed and must match
 what PJ already uses, not a layout this renderer invented. Verified
 against the source PDF directly:
 
-  * centered header block (name, blue headline, contact line with blue
-    hyperlinked LinkedIn/GitHub)
-  * blue, bold, ruled section headings (a thin horizontal rule directly
-    under each heading, full width)
-  * role/company left + date range right on one line, dates italic
-  * round bullet "●" (confirmed ATS-safe: pypdf extracted the source
-    file's own bullets as this exact character with no corruption)
+  * centered header block: uppercase name, bold black headline (not
+    blue — the prior template's headline was blue, this one is not),
+    contact line with email/LinkedIn/GitHub all as blue hyperlinks
+  * black, bold section headings, each followed by a thin blue rule
+    spanning the full width (heading text itself is black on this
+    template, only the rule is blue)
+  * role/company left + date range right on one line, dates italic,
+    en dash ("–") throughout date ranges and title separators
+  * small bullet "•" (this template's glyph — the prior one used "●";
+    both confirmed ATS-safe by extracting the respective source PDF's
+    own bullets with no corruption)
 
 Everything remains linear, extractable text — no tables used for content,
 only for the left/right date-alignment trick, which produces the same
@@ -50,16 +55,16 @@ def _styles(d: dict) -> dict:
         "name": ParagraphStyle("name", fontName="Helvetica-Bold", fontSize=18,
                                leading=20, textColor=INK, alignment=TA_CENTER,
                                spaceAfter=2),
-        "headline": ParagraphStyle("headline", fontName="Helvetica",
-                                   fontSize=d["body"] + 2.5, leading=d["lead"] + 2,
-                                   textColor=BLUE, alignment=TA_CENTER,
+        "headline": ParagraphStyle("headline", fontName="Helvetica-Bold",
+                                   fontSize=d["body"] + 1.2, leading=d["lead"],
+                                   textColor=INK, alignment=TA_CENTER,
                                    spaceAfter=2),
         "contact": ParagraphStyle("contact", fontName="Helvetica",
                                   fontSize=d["body"] - 0.2, leading=d["lead"] - 1,
                                   textColor=INK, alignment=TA_CENTER),
         "section": ParagraphStyle("section", fontName="Helvetica-Bold",
                                   fontSize=d["sec"], leading=d["sec"] + 2,
-                                  textColor=BLUE, spaceBefore=d["gap"] + 2,
+                                  textColor=INK, spaceBefore=d["gap"] + 2,
                                   spaceAfter=1, alignment=TA_LEFT),
         "body": ParagraphStyle("body", fontSize=d["body"], **base),
         "summary": ParagraphStyle("summary", fontSize=d["body"],
@@ -96,7 +101,8 @@ def _period(a, b) -> str:
                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
             return f"{months[int(m.group(2))]} {m.group(1)}"
         return v
-    return " - ".join(x for x in (fmt(a), fmt(b)) if x)
+    # En dash, matching the source template's date-range punctuation.
+    return " – ".join(x for x in (fmt(a), fmt(b)) if x)
 
 
 def _bullet_text(resume: dict, bid: str, tailored: dict | None) -> str | None:
@@ -141,7 +147,7 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
     flow: list = []
     c = resume["contact"]
 
-    flow.append(Paragraph(_esc(c["name"]), st["name"]))
+    flow.append(Paragraph(_esc(c["name"]).upper(), st["name"]))
 
     headline = (tailored or {}).get("headline") or resume["headline"]["default"]
     flow.append(Paragraph(_esc(headline), st["headline"]))
@@ -149,8 +155,10 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
     def link(label, url):
         return f'<link href="{_esc(url)}" color="#1155CC"><u>{_esc(label)}</u></link>'
 
-    bits = [c.get("location"), c.get("phone"), c.get("email")]
+    bits = [c.get("location"), c.get("phone")]
     bits = [_esc(b) for b in bits if b]
+    if c.get("email"):
+        bits.append(link(c["email"], f'mailto:{c["email"]}'))
     if c.get("linkedin"):
         bits.append(link("LinkedIn", c["linkedin"]))
     if c.get("github"):
@@ -181,7 +189,7 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
             if section == "experience":
                 left_text = (f'<b>{_esc(entry["role"])}</b>  |  '
                             f'{_esc(entry["company"])}'
-                            + (f' - {_esc(entry["company_note"])}'
+                            + (f' – {_esc(entry["company_note"])}'
                                if entry.get("company_note") else ""))
             else:
                 left_text = f'<b>{_esc(entry.get("name", ""))}</b>'
@@ -192,6 +200,17 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
             for b in entry.get("bullets") or []:
                 txt = _bullet_text(resume, b.get("id", ""), tailored)
                 if txt:
+                    # "•" (U+2022) was tested against this template and
+                    # rejected: it extracts as a control character (\x7f)
+                    # from ReportLab's base-14 Helvetica, confirmed
+                    # independent of the bulletText mechanism -- it breaks
+                    # even typed directly into the paragraph text. A real
+                    # TrueType font fixes it, but Arial can't be bundled
+                    # into the repo (redistribution licensing) and isn't
+                    # present on the Ubuntu Actions runner, so that fix
+                    # isn't portable. "●" is confirmed clean on this exact
+                    # stack, which the ATS-passing requirement outweighs
+                    # over an exact bullet-glyph match.
                     block.append(Paragraph(_esc(txt), st["bullet"], bulletText="●"))
             flow.append(KeepTogether(block))
 
