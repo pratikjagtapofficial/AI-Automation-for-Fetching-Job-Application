@@ -19,7 +19,10 @@ permissions:
 jobs:
   command:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Was 8 -- raised now that /apply and /pending-confirm ("CONFIRM")
+    # both run a real browser synchronously in this job rather than just
+    # querying the tracker, so there is less slack than other commands.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +33,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # /apply (dry-run check) and the literal "CONFIRM" reply (real
+      # submit) both drive Playwright, same as the scan job below. Without
+      # this the Python package installs fine via pip but there is no
+      # actual browser binary to launch -- confirmed live: this exact gap
+      # crashed "apply to gitlab" with "Executable doesn't exist" the
+      # first time /apply ever ran end to end in production.
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
 
       - name: Run command
         env:
