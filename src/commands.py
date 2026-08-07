@@ -37,7 +37,13 @@ HELP = """<b>Commands</b>
 /answer &lt;n&gt; &lt;your answer&gt; — answer question n
 /help — this message
 
-You can also just type a company name to look it up."""
+You can also just talk normally — "what's pending", "gitlab called",
+"send me the meraki resume" all work, or type a company name to look it
+up directly.
+
+<i>Nothing gets bulk-approved or auto-applied from a plain-English
+request, even if you ask for it — every application still needs a real,
+individual review.</i>"""
 
 
 def _age(iso: str | None) -> str:

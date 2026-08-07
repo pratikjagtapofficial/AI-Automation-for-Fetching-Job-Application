@@ -271,6 +271,23 @@ def recent(conn: sqlite3.Connection, limit: int = 10,
     ).fetchall()
 
 
+def distinct_companies(conn: sqlite3.Connection, limit: int = 40) -> list[str]:
+    """Distinct company names, most recently active first.
+
+    Used as fuzzy-match context for the natural-language router. Raw
+    `recent()` rows collapse to very few distinct companies whenever a
+    handful of employers post several listings each (Deutsche Telekom
+    posted 8+ in one scan) — that starved the NLU context window down to
+    single digits of real variety even at limit=15 rows.
+    """
+    rows = conn.execute(
+        "SELECT company, MAX(COALESCE(applied_at, prepared_at, first_seen)) "
+        "AS last_activity FROM jobs GROUP BY company "
+        "ORDER BY last_activity DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return [r["company"] for r in rows if r["company"]]
+
+
 def find_by_company(conn: sqlite3.Connection, name: str) -> list[sqlite3.Row]:
     """Backs the call-prep lookup: 'Acme called' -> what did I send them?"""
     return conn.execute(

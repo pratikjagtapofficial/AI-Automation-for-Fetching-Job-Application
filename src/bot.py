@@ -89,6 +89,23 @@ def poll_once(token: str, offset: int, timeout: int = 0) -> int:
         text = msg.get("text", "")
         print(f"<- {text!r}")
 
+        # Free text gets translated to a canonical slash command first —
+        # same contract as command_runner.py: nlu.resolve() only
+        # produces text, so the /resume file-handling check right below
+        # still applies to whatever it returns.
+        if not text.startswith("/"):
+            from . import nlu
+            text, direct = nlu.resolve(text)
+            if direct:
+                httpx.post(
+                    API.format(token=token, method="sendMessage"),
+                    json={"chat_id": chat_id, "text": direct,
+                          "parse_mode": "HTML",
+                          "disable_web_page_preview": True},
+                    timeout=25.0,
+                )
+                continue
+
         # /resume returns a file rather than text.
         if text.strip().lower().startswith("/resume"):
             arg = text.split(maxsplit=1)[1].strip() if " " in text else ""

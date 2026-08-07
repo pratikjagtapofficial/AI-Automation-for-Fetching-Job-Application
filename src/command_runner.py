@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 
+from . import nlu
 from .commands import handle, resume_for
 from .notify import Telegram
 
@@ -25,6 +26,19 @@ def run(text: str) -> int:
         return 0
 
     tg = Telegram()
+
+    # Free text (no leading "/") gets translated to a canonical slash
+    # command before anything else runs, so /scan and /resume below see
+    # the SAME string whether PJ typed a command or plain English. This
+    # is purely translation — nlu.resolve() never executes anything, so
+    # every safety check below (scan-as-separate-job, resume-as-file)
+    # still applies to whatever it produces.
+    direct = None
+    if not text.startswith("/"):
+        text, direct = nlu.resolve(text)
+        if direct:
+            tg.send(direct)
+            return 0
 
     # /scan is dispatched by the Worker as a command, but the actual scan
     # is a separate workflow job — running it inline would block this one
