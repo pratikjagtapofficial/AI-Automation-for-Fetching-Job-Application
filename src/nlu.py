@@ -37,7 +37,7 @@ from .tailor import ENDPOINT, MODEL_CANDIDATES
 INTENTS = (
     "status", "pending", "recent", "questions", "scan", "help",
     "brief", "diff", "resume", "jd", "applied", "note", "answer",
-    "unsupported", "unknown",
+    "apply", "unsupported", "unknown",
 )
 
 SCHEMA = {
@@ -96,9 +96,21 @@ note        — save a freeform note against one company; requires an
               ..."). A bare "X called" with nothing further to record is
               "brief", not "note".
 answer      — answer a numbered open question (needs answer_number + answer_text)
-unsupported — bulk-apply / apply-to-all / auto-submit / delete data / anything
-              that would act on more than one job at once, or submit
-              something without a human reviewing it individually
+apply       — start a real submission for exactly ONE explicitly named
+              company's job ("apply to X", "go ahead and submit the X
+              one", "send my application to X"). Requires a specific
+              company to be named in THIS message — a pronoun referring
+              back to an earlier message ("apply to that one", "yes do
+              it") is NOT enough on its own, since there is nothing to
+              fuzzy-match against; classify those as "unknown" instead
+              of guessing which job was meant. This never submits by
+              itself — it only starts a confirmation step PJ must still
+              approve separately.
+unsupported — bulk-apply / apply-to-all / apply-to-everything / auto-
+              submit-all / delete data / anything that would act on more
+              than one job at once, or that asks to skip the individual
+              confirmation step entirely (e.g. "apply and don't ask me
+              again", "just auto apply from now on")
 unknown     — genuinely unclear, or none of the above fit
 
 # COMPANIES RECENTLY IN THE TRACKER (for fuzzy matching only — pick the
@@ -167,7 +179,7 @@ def _synthesize(parsed: dict) -> str | None:
         n = parsed.get("count")
         return f"/recent {int(n)}" if isinstance(n, int) and n > 0 else "/recent"
 
-    if intent in ("brief", "diff", "resume", "jd", "applied") and company:
+    if intent in ("brief", "diff", "resume", "jd", "applied", "apply") and company:
         return f"/{intent} {company}"
 
     if intent == "note" and company and parsed.get("note_text"):

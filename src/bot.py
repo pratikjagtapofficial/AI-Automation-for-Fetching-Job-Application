@@ -24,7 +24,8 @@ import time
 
 import httpx
 
-from .commands import handle, resume_for
+from .command_runner import _CONFIRM_WORDS
+from .commands import apply_confirm, apply_start, handle, resume_for
 
 API = "https://api.telegram.org/bot{token}/{method}"
 OFFSET_FILE = ".bot_offset"
@@ -89,6 +90,17 @@ def poll_once(token: str, offset: int, timeout: int = 0) -> int:
         text = msg.get("text", "")
         print(f"<- {text!r}")
 
+        # Literal, deterministic — checked before any NLU translation.
+        # This is the one message that fires a real submission.
+        if text.strip().lower() in _CONFIRM_WORDS:
+            reply, shot = apply_confirm()
+            from .notify import Telegram
+            tg = Telegram(token, chat_id)
+            tg.send(reply)
+            if shot:
+                tg.send_document(shot, "Post-submission screenshot")
+            continue
+
         # Free text gets translated to a canonical slash command first —
         # same contract as command_runner.py: nlu.resolve() only
         # produces text, so the /resume file-handling check right below
@@ -106,7 +118,7 @@ def poll_once(token: str, offset: int, timeout: int = 0) -> int:
                 )
                 continue
 
-        # /resume returns a file rather than text.
+        # /resume and /apply return a file rather than plain text.
         if text.strip().lower().startswith("/resume"):
             arg = text.split(maxsplit=1)[1].strip() if " " in text else ""
             if arg:
@@ -118,6 +130,19 @@ def poll_once(token: str, offset: int, timeout: int = 0) -> int:
                 reply = caption
             else:
                 reply = "Usage: <code>/resume &lt;company&gt;</code>"
+        elif text.strip().lower().startswith("/apply"):
+            arg = text.split(maxsplit=1)[1].strip() if " " in text else ""
+            if arg:
+                reply, shot = apply_start(arg)
+                if shot:
+                    from .notify import Telegram
+                    tg = Telegram(token, chat_id)
+                    tg.send(reply)
+                    tg.send_document(
+                        shot, "Filled, unsubmitted — review before confirming")
+                    continue
+            else:
+                reply = "Usage: <code>/apply &lt;company&gt;</code>"
         else:
             reply = handle(text)
         try:

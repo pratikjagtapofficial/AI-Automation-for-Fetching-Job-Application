@@ -74,6 +74,23 @@ CREATE TABLE IF NOT EXISTS answers (
     created_at    TEXT NOT NULL,
     used_count    INTEGER DEFAULT 0
 );
+
+-- Singleton: at most one job is ever awaiting a real-submit confirmation
+-- at a time. Each Telegram message runs as a fresh, memory-less Actions
+-- process, so the gap between "apply to X" and the reply "CONFIRM" has
+-- nowhere else to live. Time-boxed via expires_at so a stray "confirm"
+-- sent hours or days later -- to a message PJ has long forgotten -- can
+-- never fire a submission against it.
+CREATE TABLE IF NOT EXISTS pending_submit (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    job_key      TEXT NOT NULL,
+    company      TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    resume_path  TEXT,
+    requested_at TEXT NOT NULL,
+    expires_at   TEXT NOT NULL
+);
 """
 
 
@@ -301,6 +318,40 @@ def last_run(conn: sqlite3.Connection) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT * FROM runs ORDER BY id DESC LIMIT 1"
     ).fetchone()
+
+
+# ── pending real-submit confirmation (singleton, time-boxed) ─────────
+
+def set_pending_submit(conn: sqlite3.Connection, job_key: str, company: str,
+                       title: str, url: str, resume_path: str | None,
+                       ttl_minutes: int = 10) -> None:
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    conn.execute(
+        "INSERT OR REPLACE INTO pending_submit "
+        "(id, job_key, company, title, url, resume_path, requested_at, expires_at) "
+        "VALUES (1,?,?,?,?,?,?,?)",
+        (job_key, company, title, url, resume_path,
+         now.isoformat(timespec="seconds"),
+         (now + timedelta(minutes=ttl_minutes)).isoformat(timespec="seconds")),
+    )
+
+
+def get_pending_submit(conn: sqlite3.Connection) -> sqlite3.Row | None:
+    """Returns None (and clears the slot) if expired or absent. A
+    caller never has to separately check freshness — an expired row is
+    treated identically to no row at all."""
+    row = conn.execute("SELECT * FROM pending_submit WHERE id=1").fetchone()
+    if not row:
+        return None
+    if row["expires_at"] < _now():
+        conn.execute("DELETE FROM pending_submit WHERE id=1")
+        return None
+    return row
+
+
+def clear_pending_submit(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM pending_submit WHERE id=1")
 
 
 def set_status(conn: sqlite3.Connection, key: str, status: str) -> bool:

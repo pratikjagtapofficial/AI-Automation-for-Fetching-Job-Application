@@ -1,19 +1,30 @@
-"""Prepare-only application filler.
+"""Application filler — and, since 2026-08-07, a real submitter.
 
-Opens a job's application form, fills what the Answer Bank can answer
-honestly, attaches the tailored resume, screenshots the result, and hands
-it to PJ.
+`prepare()` fills what the Answer Bank can answer honestly, attaches the
+tailored resume, screenshots the result, and hands it to PJ. This
+function's behaviour has NOT changed and never clicks Submit.
 
-IT NEVER SUBMITS. There is no code path here that clicks a submit button.
-That is deliberate and structural, not a flag that could be flipped by a
-config change:
+`submit()` is new: it fills fresh and can click the real Submit button on
+a job's form. This is genuine automation, not a screenshot — a real
+application goes to a real employer when it runs with dry_run=False. Two
+things stay absolute regardless of any instruction:
 
-  * PJ chose prepare-only until the pipeline has a track record.
-  * Real forms carry reCAPTCHA (GitLab's does). Bypassing bot detection
-    is off the table, so a human completes the last step regardless.
-  * Any question the Answer Bank cannot answer honestly is left blank and
-    reported. A half-filled form a human finishes is safe; an
-    auto-submitted one containing invented answers is not.
+  * CAPTCHA is never bypassed. `submit()` re-checks for one immediately
+    before touching the submit control, live, on top of whatever
+    `prepare()` recorded earlier — forms change between preparation and
+    confirmation. A CAPTCHA present at either point aborts, always.
+  * `dry_run` defaults to True. Every caller must pass dry_run=False
+    explicitly to fire a real click, and the only place in this codebase
+    that does is the confirm handler in commands.py — reached ONLY after
+    PJ named one specific job and then sent a separate, literal
+    confirmation message. No natural-language phrasing, however
+    confident-sounding, reaches dry_run=False on its own; see nlu.py's
+    "unsupported" bucket for anything that would act on more than one
+    job or skip that second explicit step.
+
+Any question the Answer Bank cannot answer honestly is left blank and
+reported, in both functions — a half-filled form a human finishes is
+safe; one containing an invented answer is not, automated or otherwise.
 """
 
 from __future__ import annotations
@@ -126,6 +137,77 @@ def _pick_option(value: str, options: list[str]) -> str | None:
     return None
 
 
+async def _fill_form(page, company: str, title: str,
+                     resume_pdf: Path | None, bank: dict) -> FillReport:
+    """Fill whatever the Answer Bank can answer honestly. Shared by
+    prepare() and submit() so there is exactly one place that decides
+    what goes into a field — not two copies that could drift apart."""
+    rep = FillReport(url=page.url, company=company, title=title)
+
+    html = (await page.content()).lower()
+    rep.captcha = any(k in html for k in
+                      ("recaptcha", "hcaptcha", "cf-turnstile"))
+
+    fields = await page.evaluate(_FIELD_JS)
+
+    for f in fields:
+        label = f["label"]
+        sel = f'[data-fill-idx="{f["idx"]}"]'
+
+        if f["type"] == "file":
+            if resume_pdf and not rep.resume_attached:
+                try:
+                    await page.set_input_files(sel, str(resume_pdf))
+                    rep.resume_attached = True
+                    rep.filled.append(("Resume", resume_pdf.name))
+                except Exception:
+                    pass
+            continue
+
+        if f["type"] in ("submit", "button", "image", "reset"):
+            continue          # never touched here — see submit() below
+        if not label:
+            continue
+
+        ans: Answer | None = answer_for(label, bank)
+        if ans is None:
+            rep.unanswered.append(label)
+            if f["required"]:
+                rep.required_unanswered.append(label)
+            continue
+
+        try:
+            if f["tag"] == "select":
+                opt = _pick_option(ans.value, f["options"])
+                if opt is None:
+                    # An answer exists but no option matches it. Choosing
+                    # the nearest option would be guessing.
+                    rep.unanswered.append(
+                        f"{label} (no option matches '{ans.value}')")
+                    if f["required"]:
+                        rep.required_unanswered.append(label)
+                    continue
+                await page.select_option(sel, label=opt)
+                rep.filled.append((label, opt))
+            elif f["type"] in ("checkbox", "radio"):
+                if ans.value.strip().lower() in ("yes", "true", "1"):
+                    await page.check(sel)
+                    rep.filled.append((label, "checked"))
+            else:
+                await page.fill(sel, ans.value)
+                rep.filled.append((label, ans.value))
+        except Exception:
+            rep.unanswered.append(f"{label} (could not fill)")
+            if f["required"]:
+                rep.required_unanswered.append(label)
+
+    return rep
+
+
+def _safe_name(company: str, title: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "_", f"{company}_{title}")[:55].strip("_")
+
+
 async def prepare(url: str, company: str, title: str,
                   resume_pdf: Path | None = None,
                   bank: dict | None = None,
@@ -154,65 +236,10 @@ async def prepare(url: str, company: str, title: str,
                 return rep
             await page.wait_for_timeout(4000)
 
-            html = (await page.content()).lower()
-            rep.captcha = any(k in html for k in
-                              ("recaptcha", "hcaptcha", "cf-turnstile"))
+            rep = await _fill_form(page, company, title, resume_pdf, bank)
+            rep.url = url
 
-            fields = await page.evaluate(_FIELD_JS)
-
-            for f in fields:
-                label = f["label"]
-                sel = f'[data-fill-idx="{f["idx"]}"]'
-
-                if f["type"] == "file":
-                    if resume_pdf and not rep.resume_attached:
-                        try:
-                            await page.set_input_files(sel, str(resume_pdf))
-                            rep.resume_attached = True
-                            rep.filled.append(("Resume", resume_pdf.name))
-                        except Exception:
-                            pass
-                    continue
-
-                if f["type"] in ("submit", "button", "image", "reset"):
-                    continue          # never touched
-                if not label:
-                    continue
-
-                ans: Answer | None = answer_for(label, bank)
-                if ans is None:
-                    rep.unanswered.append(label)
-                    if f["required"]:
-                        rep.required_unanswered.append(label)
-                    continue
-
-                try:
-                    if f["tag"] == "select":
-                        opt = _pick_option(ans.value, f["options"])
-                        if opt is None:
-                            # An answer exists but no option matches it.
-                            # Choosing the nearest option would be guessing.
-                            rep.unanswered.append(
-                                f"{label} (no option matches '{ans.value}')")
-                            if f["required"]:
-                                rep.required_unanswered.append(label)
-                            continue
-                        await page.select_option(sel, label=opt)
-                        rep.filled.append((label, opt))
-                    elif f["type"] in ("checkbox", "radio"):
-                        if ans.value.strip().lower() in ("yes", "true", "1"):
-                            await page.check(sel)
-                            rep.filled.append((label, "checked"))
-                    else:
-                        await page.fill(sel, ans.value)
-                        rep.filled.append((label, ans.value))
-                except Exception:
-                    rep.unanswered.append(f"{label} (could not fill)")
-                    if f["required"]:
-                        rep.required_unanswered.append(label)
-
-            safe = re.sub(r"[^A-Za-z0-9]+", "_", f"{company}_{title}")[:55]
-            shot = shot_dir / f"{safe.strip('_')}.png"
+            shot = shot_dir / f"{_safe_name(company, title)}.png"
             await page.screenshot(path=str(shot), full_page=True)
             rep.screenshot = shot
 
@@ -226,6 +253,142 @@ async def prepare(url: str, company: str, title: str,
 
 def prepare_sync(*a, **kw) -> FillReport:
     return asyncio.run(prepare(*a, **kw))
+
+
+@dataclass
+class SubmitResult:
+    """Outcome of submit(). `submitted` is only ever True when dry_run
+    was explicitly False AND the click actually fired — never inferred,
+    never assumed from a successful fill."""
+    rep: FillReport
+    submitted: bool = False
+    confirmed_by_page: bool = False   # a "thank you"/received-style
+                                       # message was found post-click;
+                                       # False means "click happened but
+                                       # verify manually", not "it failed"
+    screenshot: Path | None = None
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.error
+
+
+_SUCCESS_SIGNALS = (
+    "thank you", "application received", "successfully submitted",
+    "we've received", "received your application", "application complete",
+    "application submitted", "thanks for applying",
+)
+
+
+async def submit(url: str, company: str, title: str,
+                 resume_pdf: Path | None = None,
+                 bank: dict | None = None,
+                 headless: bool = True,
+                 shot_dir: Path | None = None,
+                 dry_run: bool = True) -> SubmitResult:
+    """Fill fresh and, only when dry_run=False, click the real Submit
+    button. See the module docstring — dry_run=False must only ever be
+    reached after PJ's own explicit, separate, per-job confirmation.
+
+    dry_run=True (the default) does everything up to and including
+    locating the submit control, but never touches it — used to verify a
+    job is genuinely submittable (no CAPTCHA, nothing required left
+    blank, exactly one unambiguous submit control) before ever asking PJ
+    to confirm something that would fail or misfire.
+    """
+    bank = bank if bank is not None else load_bank()
+    shot_dir = shot_dir or (ROOT / "output" / "screenshots")
+    shot_dir.mkdir(parents=True, exist_ok=True)
+    result = SubmitResult(rep=FillReport(url=url, company=company, title=title))
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=["--disable-blink-features=AutomationControlled"])
+        ctx = await browser.new_context(
+            user_agent=UA, viewport={"width": 1366, "height": 1000},
+            locale="en-IN")
+        page = await ctx.new_page()
+        try:
+            resp = await page.goto(url, wait_until="domcontentloaded",
+                                   timeout=45000)
+            if resp and resp.status >= 400:
+                result.error = f"HTTP {resp.status}"
+                await browser.close()
+                return result
+            await page.wait_for_timeout(4000)
+
+            rep = await _fill_form(page, company, title, resume_pdf, bank)
+            rep.url = url
+            result.rep = rep
+            safe = _safe_name(company, title)
+
+            # CAPTCHA is re-checked live, here, regardless of what an
+            # earlier prepare() call recorded — forms change, and this is
+            # the one check that must never trust stale data.
+            if rep.captcha:
+                result.error = "CAPTCHA present — cannot submit automatically"
+                shot = shot_dir / f"{safe}_blocked.png"
+                await page.screenshot(path=str(shot), full_page=True)
+                result.screenshot = shot
+                await browser.close()
+                return result
+
+            if rep.required_unanswered:
+                result.error = (
+                    f"{len(rep.required_unanswered)} required field(s) "
+                    f"still unanswered — cannot submit")
+                shot = shot_dir / f"{safe}_blocked.png"
+                await page.screenshot(path=str(shot), full_page=True)
+                result.screenshot = shot
+                await browser.close()
+                return result
+
+            submit_ctrl = page.locator(
+                'button[type="submit"], input[type="submit"]')
+            n = await submit_ctrl.count()
+            if n != 1:
+                result.error = (
+                    f"expected exactly one submit control, found {n} — "
+                    f"refusing to guess which one")
+                shot = shot_dir / f"{safe}_blocked.png"
+                await page.screenshot(path=str(shot), full_page=True)
+                result.screenshot = shot
+                await browser.close()
+                return result
+
+            pre_shot = shot_dir / f"{safe}_pre_submit.png"
+            await page.screenshot(path=str(pre_shot), full_page=True)
+            result.screenshot = pre_shot
+
+            if dry_run:
+                await browser.close()
+                return result
+
+            # ── everything above this line is identical whether or not
+            # the click actually happens; only dry_run gates it ────────
+            await submit_ctrl.first.click()
+            await page.wait_for_timeout(5000)
+
+            body = (await page.inner_text("body")).lower()
+            result.confirmed_by_page = any(s in body for s in _SUCCESS_SIGNALS)
+            result.submitted = True
+
+            post_shot = shot_dir / f"{safe}_post_submit.png"
+            await page.screenshot(path=str(post_shot), full_page=True)
+            result.screenshot = post_shot
+
+        except Exception as e:
+            result.error = f"{type(e).__name__}: {str(e)[:160]}"
+        finally:
+            await browser.close()
+
+    return result
+
+
+def submit_sync(*a, **kw) -> SubmitResult:
+    return asyncio.run(submit(*a, **kw))
 
 
 def report_card(rep: FillReport) -> str:
@@ -258,4 +421,61 @@ def report_card(rep: FillReport) -> str:
     lines += ["", "<b>Nothing was submitted.</b> Review the screenshot, "
                   "then finish it yourself:",
               f'<a href="{e(rep.url)}">Open application →</a>']
+    return "\n".join(lines)
+
+
+def confirm_card(result: SubmitResult) -> str:
+    """Shown before a real submission — this is the confirmation prompt
+    itself, so it must show exactly what will be sent and never imply
+    anything has happened yet."""
+    import html as _h
+    e = _h.escape
+    rep = result.rep
+
+    if not result.ok:
+        return (f"🛑 <b>Can't submit {e(rep.company)} — {e(rep.title)}</b>\n\n"
+                f"{e(result.error)}\n\n"
+                f'<a href="{e(rep.url)}">Open manually →</a>')
+
+    lines = [
+        f"⚠️ <b>About to submit — {e(rep.company)}</b>",
+        f"{e(rep.title)}",
+        "",
+        f"Filled <b>{len(rep.filled)}</b> field(s)"
+        + ("  ·  📎 resume attached" if rep.resume_attached else ""),
+    ]
+    if rep.unanswered:
+        lines.append(f"<i>{len(rep.unanswered)} optional field(s) left blank</i>")
+    lines += [
+        "",
+        "<b>This cannot be undone once sent.</b>",
+        "Reply <code>CONFIRM</code> to submit for real, or anything else "
+        "to cancel.",
+    ]
+    return "\n".join(lines)
+
+
+def submitted_card(result: SubmitResult) -> str:
+    import html as _h
+    e = _h.escape
+    rep = result.rep
+
+    if not result.ok:
+        return (f"🛑 <b>Submission failed — {e(rep.company)}</b>\n\n"
+                f"{e(result.error)}\n\n"
+                f'<a href="{e(rep.url)}">Open manually →</a>')
+
+    if not result.submitted:
+        return (f"🛑 <b>Not submitted — {e(rep.company)}</b>\n\n"
+                "<i>Internal error: reached the report stage without a "
+                "real submit attempt. Nothing was sent.</i>")
+
+    lines = [f"✅ <b>Submitted — {e(rep.company)}</b>", f"{e(rep.title)}", ""]
+    if result.confirmed_by_page:
+        lines.append("The form showed a confirmation message after submitting.")
+    else:
+        lines.append(
+            "<i>Submitted, but no confirmation text was detected on the "
+            "resulting page — worth a quick manual check.</i>")
+    lines += ["", f'<a href="{e(rep.url)}">Original posting →</a>']
     return "\n".join(lines)

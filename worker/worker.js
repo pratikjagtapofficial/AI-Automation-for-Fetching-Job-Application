@@ -44,6 +44,7 @@ const DISPATCHED = [
   "/scan", "/status", "/recent", "/pending", "/questions",
   "/answer", "/brief", "/diff", "/resume",
   "/jd", "/applied", "/note",   // Phase 5 call-prep commands
+  "/apply",                     // real-submit flow, added 2026-08-07
 ];
 
 function help() {
@@ -62,6 +63,7 @@ function help() {
     "/jd &lt;company&gt; — job description as it was when you applied",
     "/applied &lt;company&gt; — mark that you actually submitted it",
     "/note &lt;company&gt; &lt;text&gt; — save a note after a call",
+    "/apply &lt;company&gt; — start a real submission (you'll confirm before it sends)",
     "",
     "<i>Or just talk normally — the bot understands plain English too.</i>",
   ].join("\n");

@@ -16,8 +16,14 @@ import os
 import sys
 
 from . import nlu
-from .commands import handle, resume_for
+from .commands import apply_confirm, apply_start, handle, resume_for
 from .notify import Telegram
+
+# Checked BEFORE nlu.resolve(), as a literal string match — not an LLM
+# classification. This is the one message that fires a real, irreversible
+# submission, so whether it counts as "confirm" must never depend on a
+# model's judgement call about phrasing.
+_CONFIRM_WORDS = {"confirm", "yes", "y", "submit", "go", "send it"}
 
 
 def run(text: str) -> int:
@@ -27,6 +33,13 @@ def run(text: str) -> int:
         return 0
 
     tg = Telegram()
+
+    if text.strip().lower() in _CONFIRM_WORDS:
+        reply, shot = apply_confirm()
+        tg.send(reply)
+        if shot:
+            tg.send_document(shot, "Post-submission screenshot")
+        return 0
 
     # Free text (no leading "/") gets translated to a canonical slash
     # command before anything else runs, so /scan and /resume below see
@@ -62,6 +75,17 @@ def run(text: str) -> int:
             tg.send_document(path, caption)
         else:
             tg.send(caption)
+        return 0
+
+    if text.lower().startswith("/apply"):
+        arg = text.split(maxsplit=1)[1].strip() if " " in text else ""
+        if not arg:
+            tg.send("Usage: <code>/apply &lt;company&gt;</code>")
+            return 0
+        reply, shot = apply_start(arg)
+        tg.send(reply)
+        if shot:
+            tg.send_document(shot, "Filled, unsubmitted — review before confirming")
         return 0
 
     try:

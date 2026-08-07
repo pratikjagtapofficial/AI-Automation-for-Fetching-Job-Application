@@ -35,6 +35,7 @@ HELP = """<b>Commands</b>
 /note &lt;company&gt; &lt;text&gt; — save a note after a call
 /questions — form questions waiting on you
 /answer &lt;n&gt; &lt;your answer&gt; — answer question n
+/apply &lt;company&gt; — start a real submission (you'll be asked to confirm)
 /help — this message
 
 You can also just talk normally — "what's pending", "gitlab called",
@@ -43,7 +44,8 @@ up directly.
 
 <i>Nothing gets bulk-approved or auto-applied from a plain-English
 request, even if you ask for it — every application still needs a real,
-individual review.</i>"""
+individual review. Naming one job and confirming it counts as that
+review; naming "all" of them never does.</i>"""
 
 
 def _age(iso: str | None) -> str:
@@ -120,6 +122,117 @@ def resume_for(company: str):
         return pdf, f"Tailored for <b>{html.escape(comp)}</b> — {html.escape(title)}"
     except Exception as ex:
         return None, f"Could not render: {html.escape(type(ex).__name__)}"
+
+
+def _resume_for_apply(company: str, title: str):
+    """Best resume PDF to submit with: the tailored one if this job has
+    been tailored, otherwise the base resume — never nothing, since
+    applying with no resume attached is worse than applying with the
+    untailored one."""
+    root = Path(__file__).resolve().parents[1]
+    pdf, _caption = resume_for(company)
+    if pdf:
+        return pdf
+    resume = yaml.safe_load(
+        (root / "config" / "resume.yml").read_text(encoding="utf-8"))
+    from .render import render
+    pdf, _pages = render(resume, root / "output" / "base_resume.pdf")
+    return pdf
+
+
+def apply_start(company: str):
+    """-> (reply_html, screenshot_path_or_None) for "/apply <company>".
+
+    Runs a DRY-RUN submit check only — fills the form fresh, verifies no
+    CAPTCHA and nothing required is missing, locates the submit control,
+    and stops there. If the job passes, it becomes the one pending
+    confirmation slot; nothing is ever sent from this function itself.
+    """
+    from . import apply as applier
+
+    with store.connect() as conn:
+        row = callprep.lookup(conn, company)
+        if not row:
+            return f"No record for <b>{html.escape(company)}</b>.", None
+        if not applier.is_supported(row["url"]):
+            reason = applier.why_unsupported(row["url"])
+            return (
+                f"🚫 Can't auto-apply to <b>{html.escape(row['company'])}</b> "
+                f"— {html.escape(reason)}.\n\n"
+                f'<a href="{html.escape(row["url"])}">Open manually →</a>'
+            ), None
+        job_key, comp, title, url = row["key"], row["company"], row["title"], row["url"]
+
+    pdf = _resume_for_apply(comp, title)
+    result = applier.submit_sync(url, comp, title, resume_pdf=pdf, dry_run=True)
+
+    with store.connect() as conn:
+        if result.ok:
+            store.set_pending_submit(
+                conn, job_key, comp, title, url,
+                str(pdf) if pdf else None)
+        else:
+            # A failed dry run must never leave a stale confirmable slot
+            # from an earlier, different job sitting around.
+            store.clear_pending_submit(conn)
+
+    shot = str(result.screenshot) if result.screenshot else None
+    return applier.confirm_card(result), shot
+
+
+def apply_confirm():
+    """-> (reply_html, screenshot_path_or_None) for the literal reply
+    "CONFIRM". Fires the real submission — the only place in this whole
+    codebase that ever calls submit(..., dry_run=False)."""
+    from . import apply as applier
+
+    with store.connect() as conn:
+        pending = store.get_pending_submit(conn)
+        if not pending:
+            return ("Nothing pending to confirm. It may have expired "
+                    "(10 minute window) — send <code>/apply "
+                    "&lt;company&gt;</code> again."), None
+        job_key = pending["job_key"]
+        comp, title, url = pending["company"], pending["title"], pending["url"]
+        resume_path = pending["resume_path"]
+
+    pdf = Path(resume_path) if resume_path else None
+    result = applier.submit_sync(url, comp, title, resume_pdf=pdf, dry_run=False)
+
+    with store.connect() as conn:
+        store.clear_pending_submit(conn)
+        if result.submitted:
+            # mark_applied does its own company-name lookup, but we
+            # already have the exact row -- reuse it for consistency with
+            # the manual /applied path rather than duplicating the UPDATE.
+            callprep.mark_applied(conn, comp)
+            row = conn.execute(
+                "SELECT description FROM jobs WHERE key=?", (job_key,)
+            ).fetchone()
+            jd_text = row["description"] if row else ""
+            # What was actually typed into THIS form is the true record —
+            # more accurate than re-deriving it from config, which could
+            # drift from what a specific form's field actually received.
+            # Only falls back to the Answer Bank's figure when no
+            # compensation-shaped field existed on the form at all.
+            ctc = next(
+                (v for k, v in result.rep.filled
+                 if any(w in k.lower() for w in
+                       ("ctc", "salary", "compensation", "expected pay"))),
+                None,
+            )
+            if ctc is None:
+                root = Path(__file__).resolve().parents[1]
+                answers = yaml.safe_load(
+                    (root / "config" / "answers.yml").read_text(encoding="utf-8"))
+                ctc = (answers.get("compensation") or {}).get("expected_text")
+            callprep.snapshot(
+                conn, job_key, jd_text=jd_text or "",
+                answers=result.rep.filled, ctc_quoted=ctc,
+                resume_path=str(pdf) if pdf else None)
+
+    shot = str(result.screenshot) if result.screenshot else None
+    return applier.submitted_card(result), shot
 
 
 def handle(text: str) -> str:
@@ -207,6 +320,14 @@ def handle(text: str) -> str:
                 # here means the transport could not send documents.
                 return ("<i>Preparing the PDF…</i> if nothing arrives, the "
                         "sender does not support file upload.")
+
+            if cmd == "apply":
+                if not arg:
+                    return "Usage: <code>/apply &lt;company&gt;</code>"
+                # bot.py / command_runner.py intercept this (like /resume)
+                # since it needs to send a screenshot alongside the reply.
+                return ("<i>Checking that application…</i> if nothing "
+                        "arrives, the sender does not support file upload.")
 
             if cmd == "questions":
                 qs = store.open_questions(conn)
