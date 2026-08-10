@@ -37,11 +37,43 @@ MODEL_CANDIDATES = [
 ENDPOINT = ("https://generativelanguage.googleapis.com/v1beta/"
             "models/{model}:generateContent")
 
-RESPONSE_SCHEMA = {
+IDEAS_SCHEMA = {
     "type": "OBJECT",
-    "properties": {"post": {"type": "STRING"}},
+    "properties": {
+        "ideas": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "number": {"type": "INTEGER"},
+                    "hook": {"type": "STRING"},
+                    "angle": {"type": "STRING"},
+                    "format": {"type": "STRING"},
+                },
+                "required": ["number", "hook", "angle", "format"],
+            },
+        },
+    },
+    "required": ["ideas"],
+}
+
+POST_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "post": {"type": "STRING"},
+        "visual_idea": {"type": "STRING"},
+        "first_comment": {"type": "STRING"},
+        "alt_hooks": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
     "required": ["post"],
 }
+
+
+@dataclass
+class IdeaSet:
+    ok: bool
+    ideas: list[dict] = field(default_factory=list)
+    error: str = ""
 
 
 @dataclass
@@ -49,6 +81,9 @@ class Draft:
     ok: bool
     text: str = ""
     flags: list[str] = field(default_factory=list)
+    visual_idea: str = ""
+    first_comment: str = ""
+    alt_hooks: list[str] = field(default_factory=list)
     error: str = ""
 
 
@@ -66,45 +101,88 @@ def _strategy() -> str:
     return (ROOT / "config" / "social_strategy.md").read_text(encoding="utf-8")
 
 
-def build_prompt(context: str) -> str:
-    """The strategy doc (PJ-authored, config/social_strategy.md) sets the
-    voice, structure, and topic guidance. The hard rules below always
-    win over it on facts — skills, employer, experience level — because
-    the strategy doc is about persuasion and the hard rules are about
-    what's actually true. See that file's "Hard override" section for
-    why this split exists (it lists Docker/Azure/AWS as SEO keywords;
-    profile.yml says PJ doesn't have them, and profile.yml is the single
-    source of truth the whole project treats as authoritative)."""
-    voice = _voice()
+def _hard_rules(max_chars: int) -> str:
+    """Facts override the strategy doc, not the other way round — the
+    strategy doc is about persuasion, this is about what's actually
+    true. See social_strategy.md's "Hard override" section for why this
+    split exists (it lists Docker/Azure/AWS in places; profile.yml says
+    Pratik doesn't have them, and profile.yml is the project's single
+    source of truth). Shared by both the ideas prompt and the full-post
+    prompt — a forbidden skill must never appear even at the hook/angle
+    stage, not just filtered out of the final text."""
     profile = _profile()
-    v = voice.get("voice", {}) or {}
     lacks = (profile.get("skills", {}) or {}).get("lacks") or []
     months = (profile.get("experience", {}) or {}).get("total_months", 0)
-    name = (profile.get("identity", {}) or {}).get("full_name", "the author")
-    max_chars = v.get("max_chars", 3000)
 
-    return f"""{_strategy()}
-
-# CONTEXT FROM PRATIK — this is the raw material for today's post, expand and shape it using the strategy above
-{context.strip()}
-
-# HARD RULES — these override the strategy document above if they ever conflict
-- Do not claim any of these skills anywhere in the post, even as an SEO
-  keyword or a passing mention — Pratik does not have them:
+    return f"""# HARD RULES — these override the strategy document above if they ever conflict
+- Do not reference any of these skills anywhere, even as an SEO keyword,
+  a passing mention, or part of a hook — Pratik does not have them:
   {', '.join(lacks) if lacks else '(none)'}
 - Pratik has ~{months} months of professional experience. Do not imply more.
 - Do not name Pratik's current employer.
 - Do not invent projects, metrics, companies, or achievements not present
-  in the context above. If the context is thin, keep the post general
-  rather than filling gaps with invented specifics.
+  in the context below. If the context is thin, stay general rather than
+  filling gaps with invented specifics.
 - Do not imply Pratik is job hunting, open to work, or dissatisfied with
   his current role. This is a technical share, not a status update.
-- Hard character limit: {max_chars} (LinkedIn's own cap) — the strategy
-  document's 180-350 word target is the real goal, this is just a ceiling.
+- Hard character limit on the final post: {max_chars} (LinkedIn's own cap)
+  — the strategy document's 150-300 word target is the real goal, this
+  is just a ceiling."""
+
+
+def build_ideas_prompt(context: str) -> str:
+    """Strategy doc section 27: propose 3-5 genuinely different angles
+    before writing anything. This is the first of the two Gemini calls
+    in the flow — see draft_from_idea() for the second."""
+    max_chars = (_voice().get("voice", {}) or {}).get("max_chars", 3000)
+
+    return f"""{_strategy()}
+
+# CONTEXT FROM PRATIK — the raw material for today's post
+{context.strip()}
+
+{_hard_rules(max_chars)}
+
+# TASK
+Follow section 27 of the strategy above: generate 3-5 genuinely
+different content ideas from this context — not variations of the same
+angle. Each needs an exact Hook (the opening 1-2 lines), a distinct
+Angle (the unique perspective), and a recommended Format.
 
 # OUTPUT
 Return ONLY valid JSON, no markdown fence:
-{{"post": "the full post text"}}"""
+{{"ideas": [{{"number": 1, "hook": "...", "angle": "...", "format": "..."}}, ...]}}"""
+
+
+def build_post_prompt(context: str, idea: dict) -> str:
+    """Strategy doc section 28: write the full post for the idea PJ
+    picked, plus a visual suggestion, an optional first comment, and 2
+    alt hooks. This is the second Gemini call, only run after selection
+    — see draft_from_idea()."""
+    max_chars = (_voice().get("voice", {}) or {}).get("max_chars", 3000)
+
+    return f"""{_strategy()}
+
+# CONTEXT FROM PRATIK — the raw material for today's post
+{context.strip()}
+
+# SELECTED IDEA — write the post for exactly this angle, not a different one
+Hook: {idea.get('hook', '')}
+Angle: {idea.get('angle', '')}
+Format: {idea.get('format', '')}
+
+{_hard_rules(max_chars)}
+
+# TASK
+Follow section 28 of the strategy above: write the complete LinkedIn
+post for the selected idea, silently running the quality checks in
+section 29 before finalizing. Then provide a Visual idea, an optional
+First comment, and 2 Alt hooks (in case the original hook could be
+improved).
+
+# OUTPUT
+Return ONLY valid JSON, no markdown fence:
+{{"post": "the full post text", "visual_idea": "...", "first_comment": "...", "alt_hooks": ["...", "..."]}}"""
 
 
 def _extract_json(raw: str) -> dict | None:
@@ -122,7 +200,7 @@ def _extract_json(raw: str) -> dict | None:
     return None
 
 
-def call_gemini(prompt: str, api_key: str | None = None,
+def call_gemini(prompt: str, schema: dict, api_key: str | None = None,
                 timeout: float = 60.0) -> tuple[str, str]:
     """-> (text, error). Falls through the candidate models on 404/429."""
     key = api_key or os.environ.get("GEMINI_API_KEY", "")
@@ -144,7 +222,7 @@ def call_gemini(prompt: str, api_key: str | None = None,
                         "temperature": 0.6,
                         "maxOutputTokens": 2048,
                         "responseMimeType": "application/json",
-                        "responseSchema": RESPONSE_SCHEMA,
+                        "responseSchema": schema,
                     },
                 },
                 timeout=timeout,
@@ -203,12 +281,40 @@ def scan_guardrails(text: str) -> list[str]:
     return flags
 
 
-def draft(context: str, api_key: str | None = None) -> Draft:
-    """Never raises. On any failure returns ok=False with a reason."""
+def generate_ideas(context: str, api_key: str | None = None) -> IdeaSet:
+    """First of the two-step flow (strategy doc section 27). Never
+    raises — on any failure returns ok=False with a reason."""
+    if not context.strip():
+        return IdeaSet(ok=False, error="empty context")
+
+    raw, err = call_gemini(build_ideas_prompt(context), IDEAS_SCHEMA, api_key)
+    if err:
+        return IdeaSet(ok=False, error=err)
+
+    parsed = _extract_json(raw)
+    ideas = (parsed or {}).get("ideas") or []
+    if not ideas:
+        return IdeaSet(ok=False, error="model returned no ideas")
+
+    # Guardrail-scan every hook/angle up front — a forbidden skill or a
+    # job-search signal in the hook itself is worth catching before PJ
+    # even picks an idea, not just in the final post.
+    for idea in ideas:
+        combined = f"{idea.get('hook', '')} {idea.get('angle', '')}"
+        idea["flags"] = scan_guardrails(combined)
+
+    return IdeaSet(ok=True, ideas=ideas)
+
+
+def draft_from_idea(context: str, idea: dict,
+                    api_key: str | None = None) -> Draft:
+    """Second of the two-step flow (strategy doc section 28), run only
+    after PJ picks an idea from generate_ideas(). Never raises."""
     if not context.strip():
         return Draft(ok=False, error="empty context")
 
-    raw, err = call_gemini(build_prompt(context), api_key)
+    raw, err = call_gemini(build_post_prompt(context, idea), POST_SCHEMA,
+                           api_key)
     if err:
         return Draft(ok=False, error=err)
 
@@ -217,4 +323,12 @@ def draft(context: str, api_key: str | None = None) -> Draft:
         return Draft(ok=False, error="model returned no usable post")
 
     text = str(parsed["post"]).strip()
-    return Draft(ok=True, text=text, flags=scan_guardrails(text))
+    alt_hooks = [str(h) for h in (parsed.get("alt_hooks") or []) if h]
+    return Draft(
+        ok=True,
+        text=text,
+        flags=scan_guardrails(text),
+        visual_idea=str(parsed.get("visual_idea", "")).strip(),
+        first_comment=str(parsed.get("first_comment", "")).strip(),
+        alt_hooks=alt_hooks,
+    )

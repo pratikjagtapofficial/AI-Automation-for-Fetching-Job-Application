@@ -86,7 +86,37 @@ class Telegram:
             "callback_query_id": callback_id, "text": text[:200]})
 
 
-def draft_card(draft_id: int, text: str, flags: list[str]) -> str:
+def ideas_card(ideas: list[dict]) -> str:
+    """Strategy doc section 27 — proposed angles, shown before any full
+    post is written. Each idea's hook/angle/format are already
+    guardrail-scanned (see social_draft.generate_ideas); flags surface
+    here so a bad idea can be skipped before spending a second Gemini
+    call writing it out in full."""
+    e = html.escape
+    lines = [f"💡 <b>Ideas</b> — pick one to write the full post", ""]
+    for idea in ideas:
+        n = idea.get("number", "?")
+        lines += [
+            f"<b>{n}. {e(idea.get('hook', ''))}</b>",
+            f"<i>{e(idea.get('angle', ''))}</i>",
+            f"Format: {e(idea.get('format', ''))}",
+        ]
+        flags = idea.get("flags") or []
+        if flags:
+            lines.append("⚠️ " + "; ".join(e(f) for f in flags))
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def idea_buttons(idea_set_id: int, ideas: list[dict]):
+    return [[(f"Idea {idea.get('number', i + 1)}",
+              f"idea:{idea_set_id}:{idea.get('number', i + 1)}")]
+            for i, idea in enumerate(ideas)]
+
+
+def draft_card(draft_id: int, text: str, flags: list[str],
+              visual_idea: str = "", first_comment: str = "",
+              alt_hooks: list[str] | None = None) -> str:
     """Built to be judged in a few seconds on a phone, same spirit as
     notify.py's strong_fit_card — and built to be copied cleanly.
 
@@ -105,5 +135,13 @@ def draft_card(draft_id: int, text: str, flags: list[str]) -> str:
     if flags:
         lines += ["", "⚠️ <b>Flags — check before pasting this anywhere</b>"]
         lines += [f"• {e(f)}" for f in flags]
+    if visual_idea:
+        lines += ["", "🎨 <b>Visual idea</b>", e(visual_idea)]
+    if first_comment:
+        lines += ["", "💬 <b>First comment</b> (tap to copy)",
+                  f"<pre>{e(first_comment)}</pre>"]
+    if alt_hooks:
+        lines += ["", "<b>Alt hooks</b>"]
+        lines += [f"• {e(h)}" for h in alt_hooks]
     lines += ["", f"<i>{len(text)} characters</i>"]
     return "\n".join(lines)

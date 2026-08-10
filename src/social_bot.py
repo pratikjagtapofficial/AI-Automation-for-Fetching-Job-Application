@@ -44,16 +44,18 @@ import time
 import httpx
 
 from . import social_draft, social_store
-from .social_notify import Telegram, draft_card
+from .social_notify import Telegram, draft_card, idea_buttons, ideas_card
 
 API = "https://api.telegram.org/bot{token}/{method}"
 OFFSET_FILE = ".bot_offset.social"
 
 HELP = """<b>LinkedIn draft bot</b>
 
-Send any text — a topic, a bullet, a raw idea — and I'll draft a post
-from it and send it back in a tap-to-copy block. Paste it into LinkedIn
-yourself; this bot never posts anything on its own.
+Send any text — a topic, a bullet, a raw idea — and I'll come back with
+3-5 different angles to pick from (strategy doc section 27). Reply with
+the idea's number, or tap its button, and I'll write the full post for
+it, plus a visual idea, a first comment, and 2 alt hooks. Paste the post
+into LinkedIn yourself; this bot never posts anything on its own.
 
 /drafts — pending drafts
 /status — recent activity
@@ -132,21 +134,66 @@ def _handle_text(tg: Telegram, text: str) -> None:
         tg.send(f"Unknown command: <code>{cmd}</code>\n\n{HELP}")
         return
 
-    # Freeform text = raw context for a new draft.
     if not stripped:
         tg.send(HELP)
         return
 
-    result = social_draft.draft(stripped)
+    # A bare number replying to a pending idea set = selection, not new
+    # context. Anything else (including a number with more text) is
+    # treated as a fresh topic — see _handle_callback for the button path,
+    # which does the same thing without relying on typing a digit.
+    if stripped.isdigit():
+        with social_store.connect() as conn:
+            idea_set = social_store.latest_pending_ideas(conn)
+        if idea_set:
+            _write_selected_idea(tg, idea_set, int(stripped))
+            return
+        tg.send("No pending ideas to pick from — send a topic first.")
+        return
+
+    # Freeform text = raw context for a new set of ideas (strategy doc
+    # section 27). The full post is only written after a selection, in
+    # _write_selected_idea below — this is deliberately two Gemini calls,
+    # not one, so PJ picks the angle instead of getting whatever the
+    # model reached for first.
+    result = social_draft.generate_ideas(stripped)
     if not result.ok:
-        tg.send(f"⚠️ Could not draft: {result.error}")
+        tg.send(f"⚠️ Could not generate ideas: {result.error}")
         return
 
     with social_store.connect() as conn:
-        draft_id = social_store.create(conn, stripped, result.text, result.flags)
+        idea_set_id = social_store.create_ideas(conn, stripped, result.ideas)
 
-    resp = tg.send(draft_card(draft_id, result.text, result.flags),
-                   buttons=_draft_buttons(draft_id))
+    tg.send(ideas_card(result.ideas),
+            buttons=idea_buttons(idea_set_id, result.ideas))
+
+
+def _write_selected_idea(tg: Telegram, idea_set, number: int) -> None:
+    """Second Gemini call of the two-step flow — writes the full post
+    for whichever idea PJ picked, from either the number-reply path
+    above or the button-tap path in _handle_callback."""
+    ideas = json.loads(idea_set["ideas_json"])
+    idea = next((i for i in ideas if int(i.get("number", -1)) == number), None)
+    if not idea:
+        tg.send(f"No idea numbered {number} in that set.")
+        return
+
+    result = social_draft.draft_from_idea(idea_set["context"], idea)
+    if not result.ok:
+        tg.send(f"⚠️ Could not write that post: {result.error}")
+        return
+
+    with social_store.connect() as conn:
+        social_store.mark_ideas_resolved(conn, idea_set["id"])
+        draft_id = social_store.create_from_idea(
+            conn, idea_set["context"], idea, result.text, result.flags,
+            result.visual_idea, result.first_comment, result.alt_hooks)
+
+    resp = tg.send(
+        draft_card(draft_id, result.text, result.flags,
+                   result.visual_idea, result.first_comment,
+                   result.alt_hooks),
+        buttons=_draft_buttons(draft_id))
     msg = resp.get("result") or {}
     if msg.get("message_id"):
         with social_store.connect() as conn:
@@ -157,7 +204,31 @@ def _handle_callback(tg: Telegram, cq: dict) -> None:
     data = cq.get("data", "")
     cq_id = cq.get("id", "")
     message_id = (cq.get("message") or {}).get("message_id")
-    action, _, id_str = data.partition(":")
+    action, _, rest = data.partition(":")
+
+    if action == "idea":
+        # callback_data shape: "idea:{idea_set_id}:{number}"
+        id_str, _, number_str = rest.partition(":")
+        if not (id_str.isdigit() and number_str.isdigit()):
+            tg.answer_callback(cq_id, "bad request")
+            return
+        with social_store.connect() as conn:
+            idea_set = conn.execute(
+                "SELECT * FROM idea_sets WHERE id=?", (int(id_str),)
+            ).fetchone()
+        if not idea_set:
+            tg.answer_callback(cq_id, "idea set not found")
+            return
+        if idea_set["status"] != "pending":
+            tg.answer_callback(cq_id, "already picked")
+            return
+        tg.answer_callback(cq_id, "writing the full post…")
+        if message_id:
+            tg.edit(message_id, f"✍️ Writing idea {number_str}…")
+        _write_selected_idea(tg, idea_set, int(number_str))
+        return
+
+    id_str = rest
     if not id_str.isdigit():
         tg.answer_callback(cq_id, "bad request")
         return
