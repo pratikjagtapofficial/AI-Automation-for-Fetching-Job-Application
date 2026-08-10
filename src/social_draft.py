@@ -201,8 +201,18 @@ def _extract_json(raw: str) -> dict | None:
 
 
 def call_gemini(prompt: str, schema: dict, api_key: str | None = None,
-                timeout: float = 60.0) -> tuple[str, str]:
-    """-> (text, error). Falls through the candidate models on 404/429."""
+                timeout: float = 60.0, max_output_tokens: int = 4096
+                ) -> tuple[str, str]:
+    """-> (text, error). Falls through the candidate models on 404/429.
+
+    max_output_tokens defaults higher than the old 2048: once the
+    post-writing response grew to include visual_idea/first_comment/
+    alt_hooks alongside the post itself, 2048 was enough to silently
+    truncate mid-JSON on a real run (surfaced as the unhelpful "model
+    returned no usable post" rather than a token-limit error) — see the
+    finishReason check below, added at the same time, so a repeat of
+    this doesn't look like a mystery again.
+    """
     key = api_key or os.environ.get("GEMINI_API_KEY", "")
     if not key:
         return "", "GEMINI_API_KEY not set"
@@ -220,7 +230,7 @@ def call_gemini(prompt: str, schema: dict, api_key: str | None = None,
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {
                         "temperature": 0.6,
-                        "maxOutputTokens": 2048,
+                        "maxOutputTokens": max_output_tokens,
                         "responseMimeType": "application/json",
                         "responseSchema": schema,
                     },
@@ -241,7 +251,11 @@ def call_gemini(prompt: str, schema: dict, api_key: str | None = None,
             parts = (cands[0].get("content") or {}).get("parts") or []
             text = "".join(p.get("text", "") for p in parts)
             if not text.strip():
-                last = f"{model}: empty response"
+                finish = cands[0].get("finishReason", "")
+                last = (f"{model}: hit max_output_tokens="
+                        f"{max_output_tokens} before producing output"
+                        if finish == "MAX_TOKENS"
+                        else f"{model}: empty response ({finish or 'unknown'})")
                 continue
             return text, ""
         except Exception as e:
@@ -294,7 +308,10 @@ def generate_ideas(context: str, api_key: str | None = None) -> IdeaSet:
     parsed = _extract_json(raw)
     ideas = (parsed or {}).get("ideas") or []
     if not ideas:
-        return IdeaSet(ok=False, error="model returned no ideas")
+        reason = "unparseable JSON" if parsed is None else "empty 'ideas' list"
+        return IdeaSet(ok=False,
+                       error=f"model returned no ideas ({reason}): "
+                             f"{raw[:200]!r}")
 
     # Guardrail-scan every hook/angle up front — a forbidden skill or a
     # job-search signal in the hook itself is worth catching before PJ
@@ -320,7 +337,10 @@ def draft_from_idea(context: str, idea: dict,
 
     parsed = _extract_json(raw)
     if not parsed or not str(parsed.get("post", "")).strip():
-        return Draft(ok=False, error="model returned no usable post")
+        reason = "unparseable JSON" if parsed is None else "empty 'post' field"
+        return Draft(ok=False,
+                    error=f"model returned no usable post ({reason}): "
+                          f"{raw[:200]!r}")
 
     text = str(parsed["post"]).strip()
     alt_hooks = [str(h) for h in (parsed.get("alt_hooks") or []) if h]
