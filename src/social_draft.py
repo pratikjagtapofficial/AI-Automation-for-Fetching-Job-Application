@@ -295,6 +295,42 @@ def scan_guardrails(text: str) -> list[str]:
     return flags
 
 
+_HOOK_RE = re.compile(
+    r"hook\s*:\s*(.+?)(?=\n\s*angle\s*:|\n\s*format\s*:|\Z)", re.I | re.S)
+_ANGLE_RE = re.compile(
+    r"angle\s*:\s*(.+?)(?=\n\s*format\s*:|\Z)", re.I | re.S)
+_FORMAT_RE = re.compile(r"format\s*:\s*(.+?)\Z", re.I | re.S)
+
+
+def parse_explicit_idea(text: str) -> dict | None:
+    """Recognizes when PJ has already supplied a Hook/Angle/Format
+    directly (the same shape the bot's own ideas card uses) rather than
+    raw context to brainstorm from.
+
+    Without this, sending back one of the bot's own ideas — or writing
+    a topic in that shape on purpose — got treated as fresh unstructured
+    context and ran through generate_ideas() again, producing a whole
+    new unrelated batch instead of writing the idea that was actually
+    given. Requires both Hook: and Angle: to trigger, so an ordinary
+    topic that happens to mention the word "format" in passing won't
+    false-positive into this path.
+    """
+    hook_m = _HOOK_RE.search(text)
+    angle_m = _ANGLE_RE.search(text)
+    if not hook_m or not angle_m:
+        return None
+    format_m = _FORMAT_RE.search(text)
+    hook = hook_m.group(1).strip()
+    angle = angle_m.group(1).strip()
+    if not hook or not angle:
+        return None
+    return {
+        "hook": hook,
+        "angle": angle,
+        "format": format_m.group(1).strip() if format_m else "",
+    }
+
+
 def generate_ideas(context: str, api_key: str | None = None) -> IdeaSet:
     """First of the two-step flow (strategy doc section 27). Never
     raises — on any failure returns ok=False with a reason."""

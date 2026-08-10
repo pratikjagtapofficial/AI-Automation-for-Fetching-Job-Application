@@ -151,6 +151,17 @@ def _handle_text(tg: Telegram, text: str) -> None:
         tg.send("No pending ideas to pick from — send a topic first.")
         return
 
+    # If PJ already supplied a Hook/Angle/Format directly — including
+    # pasting back one of the bot's own proposed ideas — skip idea
+    # generation entirely and write that exact idea. Without this check,
+    # a message already shaped like an idea got treated as fresh
+    # unstructured context and produced a whole new unrelated batch of
+    # ideas instead of writing the one actually given.
+    explicit = social_draft.parse_explicit_idea(stripped)
+    if explicit:
+        _write_idea(tg, stripped, explicit)
+        return
+
     # Freeform text = raw context for a new set of ideas (strategy doc
     # section 27). The full post is only written after a selection, in
     # _write_selected_idea below — this is deliberately two Gemini calls,
@@ -168,25 +179,20 @@ def _handle_text(tg: Telegram, text: str) -> None:
             buttons=idea_buttons(idea_set_id, result.ideas))
 
 
-def _write_selected_idea(tg: Telegram, idea_set, number: int) -> None:
+def _write_idea(tg: Telegram, context: str, idea: dict) -> None:
     """Second Gemini call of the two-step flow — writes the full post
-    for whichever idea PJ picked, from either the number-reply path
-    above or the button-tap path in _handle_callback."""
-    ideas = json.loads(idea_set["ideas_json"])
-    idea = next((i for i in ideas if int(i.get("number", -1)) == number), None)
-    if not idea:
-        tg.send(f"No idea numbered {number} in that set.")
-        return
-
-    result = social_draft.draft_from_idea(idea_set["context"], idea)
+    for a given idea. Shared by both entry points: PJ picking one of the
+    bot's own proposed ideas (_write_selected_idea below), and PJ
+    supplying a Hook/Angle/Format directly, which skips idea generation
+    entirely (see social_draft.parse_explicit_idea)."""
+    result = social_draft.draft_from_idea(context, idea)
     if not result.ok:
         tg.send(f"⚠️ Could not write that post: {result.error}")
         return
 
     with social_store.connect() as conn:
-        social_store.mark_ideas_resolved(conn, idea_set["id"])
         draft_id = social_store.create_from_idea(
-            conn, idea_set["context"], idea, result.text, result.flags,
+            conn, context, idea, result.text, result.flags,
             result.visual_idea, result.first_comment, result.alt_hooks)
 
     resp = tg.send(
@@ -198,6 +204,21 @@ def _write_selected_idea(tg: Telegram, idea_set, number: int) -> None:
     if msg.get("message_id"):
         with social_store.connect() as conn:
             social_store.set_message_id(conn, draft_id, msg["message_id"])
+
+
+def _write_selected_idea(tg: Telegram, idea_set, number: int) -> None:
+    """Resolves a number/button pick against a pending idea set, then
+    hands off to _write_idea for the actual writing."""
+    ideas = json.loads(idea_set["ideas_json"])
+    idea = next((i for i in ideas if int(i.get("number", -1)) == number), None)
+    if not idea:
+        tg.send(f"No idea numbered {number} in that set.")
+        return
+
+    with social_store.connect() as conn:
+        social_store.mark_ideas_resolved(conn, idea_set["id"])
+
+    _write_idea(tg, idea_set["context"], idea)
 
 
 def _handle_callback(tg: Telegram, cq: dict) -> None:
