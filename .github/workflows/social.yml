@@ -53,6 +53,7 @@ jobs:
         env:
           SOCIAL_BOT_TOKEN: ${{ secrets.SOCIAL_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CALLBACK_JSON: ${{ toJSON(github.event.client_payload.callback) }}
         run: python -m src.social_bot --handle-callback "$CALLBACK_JSON"
 
