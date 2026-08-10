@@ -101,7 +101,12 @@ def build_prompt(job, resume: dict, profile: dict) -> str:
     forbidden = profile.get("skills", {}).get("lacks") or []
     groups = [g["name"] for g in resume["skills"]["groups"]]
 
-    bullet_block = "\n".join(f"  {bid}: {txt}" for bid, txt in bullets.items())
+    # Word count is given alongside each bullet so the model has a
+    # concrete target rather than a vague "keep it similar" -- without
+    # this, tailored bullets ran visibly longer than the source resume's
+    # and PJ's resume no longer fit one page cleanly.
+    bullet_block = "\n".join(
+        f"  {bid} [{len(txt.split())} words]: {txt}" for bid, txt in bullets.items())
     jd = (job.description or "")[:6000]
 
     return f"""You are tailoring a resume for ONE specific job application.
@@ -116,13 +121,21 @@ def build_prompt(job, resume: dict, profile: dict) -> str:
 4. NEVER inflate experience. The candidate has ~11 months professional
    experience. Do not imply more.
 5. Only these skills may be referenced: {', '.join(allowed)}
+6. NEVER make a bullet longer than its source. Each source bullet below
+   is tagged with its word count -- your reworded version must be AT OR
+   UNDER that count, never over. The candidate's real resume fits one
+   page with bullets at this length; longer ones push it past a page and
+   read as padded, not stronger. If you cannot mirror the job's
+   vocabulary within the same length, keep more of the original wording
+   rather than exceed it.
 
 # WHAT YOU MAY DO
 - Choose a headline that fits the job (from the variants, or compose one
   using ONLY allowed skills).
 - Rewrite the summary to lead with what this job cares about (max 90 words).
 - Reorder the skill groups so the most relevant appear first.
-- Reword bullets to mirror the job's vocabulary, keeping the same facts.
+- Reword bullets to mirror the job's vocabulary, keeping the same facts
+  AND the same or shorter length (see rule 6 -- this is not optional).
 - Reorder bullets so the most relevant lead.
 
 # THE JOB

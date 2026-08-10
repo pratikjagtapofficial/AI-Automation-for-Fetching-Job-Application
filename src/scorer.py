@@ -110,12 +110,28 @@ def _excluded_title(title: str, cfg: dict) -> str | None:
 
 
 def _min_years_required(text: str) -> int | None:
-    """Lowest experience figure mentioned, or None if unstated."""
+    """The job's own stated experience figure, or None if unstated.
+
+    Uses the FIRST years-figure found, not the lowest across the whole
+    text. Confirmed live (2026-08-10): two Instahyre postings genuinely
+    requiring 5-7 and 3-7 years scored 62 and 49 and were tailored and
+    sent to PJ. Root cause -- instahyre.py scrapes the full job page
+    (needed since the API gives no JD body at all), and that page
+    includes a "Similar Jobs" sidebar of OTHER companies' postings,
+    whose experience ranges land in the same scraped text. Taking the
+    global minimum let a lower, unrelated sidebar figure silently
+    override the job's own real requirement -- and non-deterministically,
+    since sidebar recommendations reshuffle between page loads. The
+    verified band is deliberately prepended first in instahyre.py
+    specifically so "first match" recovers it reliably; Naukri and
+    Hirist's short, single-purpose description fields are unaffected
+    either way, since they only ever state the figure once anyway.
+    """
     if not text:
         return None
     hits = _EXP_PATTERN.findall(text[:6000])
     lows = [int(a) for a, _ in hits if a.isdigit() and int(a) <= 20]
-    return min(lows) if lows else None
+    return lows[0] if lows else None
 
 
 def _blacklisted(company: str, text: str, cfg: dict) -> str | None:

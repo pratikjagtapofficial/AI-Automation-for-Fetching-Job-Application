@@ -154,7 +154,11 @@ search:
      Freelancer, Freelance, Contractor, Part-time, Trainer, Faculty,
      Professor, Instructor]
 
-  experience_years_max: 2
+  # Widened 2 -> 3 per PJ: a bit more headroom on the ceiling, but the
+  # floor staying at 0 is what actually matters -- a "0-3 Yrs" posting
+  # must keep passing this filter, which it does since only the minimum
+  # figure is ever checked against this ceiling.
+  experience_years_max: 3
 
   locations:
     - {name: Remote,     weight: 1.30}

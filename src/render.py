@@ -221,17 +221,16 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
     if edu:
         flow += _ruled_heading("Education", st)
         for e in edu:
-            # Score is kept off the title line and shown separately: some
-            # institution names are long enough that appending "— 7.78
-            # CGPA" pushed the line onto two rows, which stranded the
-            # right-aligned date away from the text it belongs beside.
+            # Score/CGPA is intentionally never rendered here, per PJ:
+            # his own source resume's education section does not show
+            # it, so the tailored PDF should not either. It still lives
+            # in answers.yml for application forms that explicitly ask
+            # for a CGPA -- this only controls what appears on the page.
             left = Paragraph(
                 f'<b>{_esc(e["degree"])}</b>, {_esc(e["institution"])}',
                 st["body"])
             period = _period(e.get("from"), e.get("to"))
             flow.append(_row(left, period, st, width))
-            if e.get("score"):
-                flow.append(Paragraph(_esc(e["score"]), st["date"]))
 
     certs = (resume.get("certifications") or {}).get("items") or []
     if certs:
