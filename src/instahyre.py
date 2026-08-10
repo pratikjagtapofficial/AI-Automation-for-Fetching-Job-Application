@@ -122,6 +122,29 @@ def fetch(max_pages: int = MAX_PAGES) -> tuple[list[Job], list[str]]:
     return list(unique.values()), errors
 
 
+# Confirmed live 2026-08-11: two enriched Instahyre jobs (Xponentium,
+# Matters) came back with a Cloudflare-style bot-check page as their
+# "description" -- "Performing security verification... This website
+# uses a security service to protect against malicious bots" -- instead
+# of the real job page. That text has no years figure in it, so the
+# scorer read it as "experience unstated" and let both through
+# unscreened, even though the live posting states real requirements.
+# Detected here rather than trusted as real content.
+_BLOCK_MARKERS = (
+    "performing security verification",
+    "checking your browser",
+    "attention required",
+    "malicious bots",
+    "cf-browser-verification",
+    "just a moment",   # Cloudflare's interstitial page title
+)
+
+
+def _looks_blocked(body: str) -> bool:
+    low = body.lower()
+    return any(m in low for m in _BLOCK_MARKERS)
+
+
 async def _detail_text(job: Job) -> str | None:
     """Fetch the public job page and pull the experience band + JD body.
 
@@ -129,6 +152,11 @@ async def _detail_text(job: Job) -> str | None:
     plain text next to the location, e.g. "Chennai5-9 Years", so it is
     prefixed onto the body in a form the shared _min_years_required
     regex can parse, matching how hirist.py surfaces its own min/max.
+
+    Returns None on a bot-check/block page exactly as it would for a
+    genuinely failed fetch -- both mean "no verified content", and
+    enrich() must treat that as unverified, not as "no experience
+    stated".
     """
     from playwright.async_api import async_playwright
 
@@ -146,7 +174,7 @@ async def _detail_text(job: Job) -> str | None:
             body = None
         finally:
             await browser.close()
-    if not body:
+    if not body or _looks_blocked(body):
         return None
 
     m = re.search(r"([A-Za-z ,]+?)(\d+\s*-\s*\d+|\d+\+)\s*Years?", body)
@@ -161,20 +189,32 @@ async def enrich(jobs: list[Job], max_enrich: int = 20) -> tuple[list[Job], list
     scoring — enriching all ~140 jobs from a single search would mean
     ~140 browser launches every run. Only the survivors of the free
     checks are worth the cost; `jobs` should already be that shortlist.
+
+    Returns only the jobs that were actually verified. A job whose fetch
+    failed or was blocked is DROPPED here, not returned with its
+    unmodified thin keyword blob -- that blob never carries a years
+    figure (see module docstring), so keeping it would let the scorer
+    read "fetch failed" as "experience unstated" and pass it through
+    unscreened, exactly the bug confirmed live 2026-08-11.
     """
     errors: list[str] = []
+    verified: list[Job] = []
     for j in jobs[:max_enrich]:
         try:
             text = await _detail_text(j)
-            if text:
-                j.description = text
-            else:
-                errors.append(f"instahyre-detail[{j.company}]: empty page")
         except Exception as e:
             errors.append(f"instahyre-detail[{j.company}]: {type(e).__name__}")
+            continue
+        if not text:
+            errors.append(
+                f"instahyre-detail[{j.company}]: could not verify (blocked "
+                f"or empty) — dropped rather than scored as unscreened")
+            continue
+        j.description = text
+        verified.append(j)
     if len(jobs) > max_enrich:
         errors.append(
             f"instahyre-detail: {len(jobs) - max_enrich} shortlisted job(s) "
             f"skipped (max_enrich={max_enrich}) — their experience band is "
             f"unverified, so they should be treated as unscreened, not clean")
-    return jobs, errors
+    return verified, errors

@@ -154,11 +154,19 @@ search:
      Freelancer, Freelance, Contractor, Part-time, Trainer, Faculty,
      Professor, Instructor]
 
-  # Widened 2 -> 3 per PJ: a bit more headroom on the ceiling, but the
-  # floor staying at 0 is what actually matters -- a "0-3 Yrs" posting
-  # must keep passing this filter, which it does since only the minimum
-  # figure is ever checked against this ceiling.
-  experience_years_max: 3
+  # Reverted 3 -> 2 (2026-08-11). The 2->3 widen was meant only to help
+  # "0-3 Yrs" postings pass -- but a "0-3 Yrs" posting's floor is 0, which
+  # always passes this check regardless of the ceiling value, so the
+  # widen was never actually needed for that case. Its only real effect
+  # was a boundary bug: the check is `min_yrs > experience_years_max`, so
+  # at 3 a posting whose OWN minimum is exactly 3 ("3-5 Yrs", "3-6 Yrs",
+  # "3-12 Yrs") also passed -- confirmed live 2026-08-11 against three
+  # real Hirist postings (Adapt Ready, Hityaglobal, True Credits) that
+  # explicitly state a 3-year floor on their own site yet scored
+  # 49/67/52 and were tailored and sent to PJ, who has ~11 months
+  # experience. Back at 2, "0-3 Yrs" postings still pass (floor 0), and
+  # genuinely 3+-year postings are rejected again.
+  experience_years_max: 2
 
   locations:
     - {name: Remote,     weight: 1.30}
