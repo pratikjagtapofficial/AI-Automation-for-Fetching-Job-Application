@@ -38,6 +38,11 @@ HELP = """<b>Commands</b>
 /apply &lt;company&gt; — start a real submission (you'll be asked to confirm)
 /help — this message
 
+A scan may stage several apply-ready jobs at once — each gets its own
+"✅ ready to apply" card. Reply <code>CONFIRM</code> if only one is
+waiting, or <code>CONFIRM &lt;company&gt;</code> to pick one when several
+are.
+
 You can also just talk normally — "what's pending", "gitlab called",
 "send me the meraki resume" all work, or type a company name to look it
 up directly.
@@ -171,27 +176,29 @@ def apply_start(company: str):
             store.set_pending_submit(
                 conn, job_key, comp, title, url,
                 str(pdf) if pdf else None)
+            multi = len(store.list_pending_submit(conn)) > 1
         else:
             # A failed dry run must never leave a stale confirmable slot
-            # from an earlier, different job sitting around.
-            store.clear_pending_submit(conn)
+            # for THIS job sitting around (an earlier one for a different
+            # job, if any, is left alone — it is its own confirmation).
+            store.clear_pending_submit(conn, job_key)
+            multi = False
 
     shot = str(result.screenshot) if result.screenshot else None
-    return applier.confirm_card(result), shot
+    return applier.confirm_card(result, disambiguate=multi), shot
 
 
-def apply_confirm():
-    """-> (reply_html, screenshot_path_or_None) for the literal reply
-    "CONFIRM". Fires the real submission — the only place in this whole
-    codebase that ever calls submit(..., dry_run=False)."""
+def apply_confirm(company: str | None = None):
+    """-> (reply_html, screenshot_path_or_None) for a "CONFIRM" reply,
+    optionally "CONFIRM <company>" when more than one job is pending.
+    Fires the real submission — the only place in this whole codebase
+    that ever calls submit(..., dry_run=False)."""
     from . import apply as applier
 
     with store.connect() as conn:
-        pending = store.get_pending_submit(conn)
+        pending, err = store.get_pending_submit(conn, company)
         if not pending:
-            return ("Nothing pending to confirm. It may have expired "
-                    "(10 minute window) — send <code>/apply "
-                    "&lt;company&gt;</code> again."), None
+            return html.escape(err or "Nothing pending to confirm."), None
         job_key = pending["job_key"]
         comp, title, url = pending["company"], pending["title"], pending["url"]
         resume_path = pending["resume_path"]
@@ -200,7 +207,7 @@ def apply_confirm():
     result = applier.submit_sync(url, comp, title, resume_pdf=pdf, dry_run=False)
 
     with store.connect() as conn:
-        store.clear_pending_submit(conn)
+        store.clear_pending_submit(conn, job_key)
         if result.submitted:
             # mark_applied does its own company-name lookup, but we
             # already have the exact row -- reuse it for consistency with

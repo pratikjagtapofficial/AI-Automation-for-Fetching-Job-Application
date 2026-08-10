@@ -24,7 +24,7 @@ import time
 
 import httpx
 
-from .command_runner import _CONFIRM_WORDS
+from .command_runner import _parse_confirm
 from .commands import apply_confirm, apply_start, handle, resume_for
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -92,8 +92,9 @@ def poll_once(token: str, offset: int, timeout: int = 0) -> int:
 
         # Literal, deterministic — checked before any NLU translation.
         # This is the one message that fires a real submission.
-        if text.strip().lower() in _CONFIRM_WORDS:
-            reply, shot = apply_confirm()
+        is_confirm, confirm_company = _parse_confirm(text)
+        if is_confirm:
+            reply, shot = apply_confirm(confirm_company)
             from .notify import Telegram
             tg = Telegram(token, chat_id)
             tg.send(reply)

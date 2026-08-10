@@ -298,10 +298,13 @@ def main() -> int:
             time.sleep(4)
 
         # Strong fits get a full card with the resume diff attached, plus
-        # the tailored PDF itself, plus a prepared application where the
-        # form is publicly fillable.
+        # the tailored PDF itself, then split into two categories: public
+        # forms get dry-run-checked and staged ready for a bare CONFIRM;
+        # anything login-gated (Naukri/Hirist/Instahyre/LinkedIn) is
+        # handed over with the resume already attached above — PJ's
+        # credentials are never entered by this system.
         prep_budget = profile["limits"].get("max_prepare_per_run", 4)
-        prepared = 0
+        pdfs: dict[str, object] = {}
 
         for j in strong:
             key = store.job_key(j)
@@ -309,34 +312,53 @@ def main() -> int:
             tg.send(tailored_card(j, res), preview=False)
 
             pdf = getattr(res, "_pdf", None) if res else None
+            pdfs[key] = pdf
             if pdf:
                 tg.send_document(
                     pdf, caption=f"Tailored for <b>{j.company}</b> — {j.title}")
 
-            if not profile["limits"].get("prepare_applications", True):
-                continue
+        if profile["limits"].get("prepare_applications", True):
+            ready_jobs = [j for j in strong if applier.is_supported(j.url)]
+            login_jobs = [j for j in strong if not applier.is_supported(j.url)]
 
-            if not applier.is_supported(j.url):
-                # Login-gated boards are handed over rather than
-                # half-prepared; PJ's credentials are never entered.
-                store.save_preparation(conn, key, filled=0, unanswered=[],
-                                       screenshot=None, supported=False)
-                continue
+            for j in login_jobs:
+                store.save_preparation(conn, store.job_key(j), filled=0,
+                                       unanswered=[], screenshot=None,
+                                       supported=False)
+            if login_jobs:
+                tg.send(
+                    f"🔒 <b>{len(login_jobs)} need your login</b>\n"
+                    "<i>Resume is attached above — these apply through "
+                    "an account this system never signs into.</i>")
 
-            if prepared >= prep_budget:
-                continue
+            # Dry-run each candidate first (no messages sent yet) so the
+            # "N ready" count in the lead-in line is accurate, then send
+            # each confirm card knowing up front whether CONFIRM needs a
+            # company name to disambiguate.
+            staged_results: list[tuple] = []   # (job, key, pdf, result)
+            for j in ready_jobs[:prep_budget]:
+                key = store.job_key(j)
+                pdf = pdfs.get(key) or (ROOT / "output" / "base_resume.pdf")
+                try:
+                    result = applier.submit_sync(
+                        j.url, j.company, j.title, resume_pdf=pdf,
+                        dry_run=True)
+                except Exception as ex:
+                    errors.append(f"prepare[{j.company}]: {type(ex).__name__}")
+                    print(f"  dry-run ERROR: {j.company} — {ex}")
+                    continue
 
-            try:
-                rep = applier.prepare_sync(
-                    j.url, j.company, j.title,
-                    resume_pdf=pdf or (ROOT / "output" / "base_resume.pdf"))
-                prepared += 1
+                rep = result.rep
+                if result.ok:
+                    store.set_pending_submit(
+                        conn, key, j.company, j.title, j.url,
+                        str(pdf) if pdf else None)
                 store.save_preparation(
                     conn, key, filled=len(rep.filled),
                     unanswered=rep.unanswered,
-                    screenshot=str(rep.screenshot) if rep.screenshot else None,
+                    screenshot=str(result.screenshot) if result.screenshot else None,
                     supported=True)
-                # Freeze what the employer actually received. Cannot be
+                # Freeze what the employer would receive. Cannot be
                 # reconstructed later: postings get taken down and the
                 # tailored PDF is regenerated on demand.
                 callprep.snapshot(
@@ -347,20 +369,28 @@ def main() -> int:
                                 .get("expected_text")),
                     resume_path=str(pdf) if pdf else None,
                 )
-
-                tg.send(applier.report_card(rep), preview=False)
-                if rep.screenshot:
-                    tg.send_document(
-                        rep.screenshot,
-                        caption=(f"Filled form — <b>{j.company}</b>. "
-                                 f"<b>Nothing submitted.</b>"))
-                if rep.error:
-                    errors.append(f"prepare[{j.company}]: {rep.error}")
-                print(f"  prepared: {j.company} — {len(rep.filled)} filled, "
+                if not result.ok:
+                    errors.append(f"prepare[{j.company}]: {result.error}")
+                print(f"  {'staged' if result.ok else 'FAILED'}: "
+                      f"{j.company} — {len(rep.filled)} filled, "
                       f"{len(rep.required_unanswered)} need PJ")
-            except Exception as ex:
-                errors.append(f"prepare[{j.company}]: {type(ex).__name__}")
-                print(f"  prepare ERROR: {j.company} — {ex}")
+                staged_results.append((j, key, pdf, result))
+
+            staged = [r for (_, _, _, r) in staged_results if r.ok]
+            if staged:
+                tg.send(
+                    f"✅ <b>{len(staged)} ready to apply</b>\n"
+                    "<i>Dry-run passed — form filled, no CAPTCHA, exactly "
+                    "one submit control found.</i>")
+            multi = len(staged) > 1
+            for j, key, pdf, result in staged_results:
+                tg.send(applier.confirm_card(result, disambiguate=multi),
+                       preview=False)
+                if result.screenshot:
+                    tg.send_document(
+                        result.screenshot,
+                        caption=(f"Filled form — <b>{j.company}</b>. "
+                                 f"<b>Nothing submitted yet.</b>"))
 
         # Everything else batches, with a marker showing which were
         # tailored so PJ knows a /diff is available.

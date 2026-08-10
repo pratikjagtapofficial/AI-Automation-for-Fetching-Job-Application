@@ -25,6 +25,23 @@ from .notify import Telegram
 # model's judgement call about phrasing.
 _CONFIRM_WORDS = {"confirm", "yes", "y", "submit", "go", "send it"}
 
+# A trailing company name disambiguates which of several simultaneously
+# pending jobs to confirm ("CONFIRM gitlab"). Only the longer, unambiguous
+# words take a suffix — "y" or "go" followed by other text reads as normal
+# sentence, not a confirmation with a company name attached.
+_CONFIRM_PREFIXES = ("confirm", "yes", "submit")
+
+
+def _parse_confirm(text: str) -> tuple[bool, str | None]:
+    """-> (is_confirm, company_or_None)."""
+    low = text.strip().lower()
+    if low in _CONFIRM_WORDS:
+        return True, None
+    for w in _CONFIRM_PREFIXES:
+        if low.startswith(w + " "):
+            return True, text.strip()[len(w):].strip()
+    return False, None
+
 
 def run(text: str) -> int:
     original = (text or "").strip()
@@ -34,8 +51,9 @@ def run(text: str) -> int:
 
     tg = Telegram()
 
-    if text.strip().lower() in _CONFIRM_WORDS:
-        reply, shot = apply_confirm()
+    is_confirm, confirm_company = _parse_confirm(text)
+    if is_confirm:
+        reply, shot = apply_confirm(confirm_company)
         tg.send(reply)
         if shot:
             tg.send_document(shot, "Post-submission screenshot")

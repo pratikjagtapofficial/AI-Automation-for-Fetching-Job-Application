@@ -75,15 +75,17 @@ CREATE TABLE IF NOT EXISTS answers (
     used_count    INTEGER DEFAULT 0
 );
 
--- Singleton: at most one job is ever awaiting a real-submit confirmation
--- at a time. Each Telegram message runs as a fresh, memory-less Actions
--- process, so the gap between "apply to X" and the reply "CONFIRM" has
--- nowhere else to live. Time-boxed via expires_at so a stray "confirm"
--- sent hours or days later -- to a message PJ has long forgotten -- can
--- never fire a submission against it.
+-- Jobs awaiting a real-submit confirmation. Keyed by job_key rather than
+-- a singleton row: a scan can proactively stage several apply-ready jobs
+-- at once, and PJ confirms them one at a time by name ("CONFIRM gitlab"),
+-- or with a bare "CONFIRM" when exactly one is waiting. Each Telegram
+-- message runs as a fresh, memory-less Actions process, so this table is
+-- the only place the gap between staging and confirmation can live.
+-- Time-boxed via expires_at so a stray "confirm" sent hours or days
+-- later -- to a message PJ has long forgotten -- can never fire a
+-- submission against it.
 CREATE TABLE IF NOT EXISTS pending_submit (
-    id           INTEGER PRIMARY KEY CHECK (id = 1),
-    job_key      TEXT NOT NULL,
+    job_key      TEXT PRIMARY KEY,
     company      TEXT NOT NULL,
     title        TEXT NOT NULL,
     url          TEXT NOT NULL,
@@ -133,6 +135,28 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for col, decl in columns.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+    # pending_submit used to be a singleton (id INTEGER PRIMARY KEY CHECK
+    # (id=1)); a committed jobs.db from before the multi-pending redesign
+    # still has that shape, and CREATE TABLE IF NOT EXISTS above is a
+    # no-op against it. Detect and rebuild -- rows are time-boxed to 10
+    # minutes, so nothing of real value is ever lost by dropping it.
+    pending_cols = {
+        r["name"] for r in conn.execute("PRAGMA table_info(pending_submit)")
+    }
+    if "id" in pending_cols:
+        conn.execute("DROP TABLE pending_submit")
+        conn.execute("""
+            CREATE TABLE pending_submit (
+                job_key      TEXT PRIMARY KEY,
+                company      TEXT NOT NULL,
+                title        TEXT NOT NULL,
+                url          TEXT NOT NULL,
+                resume_path  TEXT,
+                requested_at TEXT NOT NULL,
+                expires_at   TEXT NOT NULL
+            )
+        """)
 
 
 @contextmanager
@@ -320,7 +344,7 @@ def last_run(conn: sqlite3.Connection) -> sqlite3.Row | None:
     ).fetchone()
 
 
-# ── pending real-submit confirmation (singleton, time-boxed) ─────────
+# ── pending real-submit confirmations (multi-row, time-boxed) ────────
 
 def set_pending_submit(conn: sqlite3.Connection, job_key: str, company: str,
                        title: str, url: str, resume_path: str | None,
@@ -329,29 +353,60 @@ def set_pending_submit(conn: sqlite3.Connection, job_key: str, company: str,
     now = datetime.now(timezone.utc)
     conn.execute(
         "INSERT OR REPLACE INTO pending_submit "
-        "(id, job_key, company, title, url, resume_path, requested_at, expires_at) "
-        "VALUES (1,?,?,?,?,?,?,?)",
+        "(job_key, company, title, url, resume_path, requested_at, expires_at) "
+        "VALUES (?,?,?,?,?,?,?)",
         (job_key, company, title, url, resume_path,
          now.isoformat(timespec="seconds"),
          (now + timedelta(minutes=ttl_minutes)).isoformat(timespec="seconds")),
     )
 
 
-def get_pending_submit(conn: sqlite3.Connection) -> sqlite3.Row | None:
-    """Returns None (and clears the slot) if expired or absent. A
-    caller never has to separately check freshness — an expired row is
-    treated identically to no row at all."""
-    row = conn.execute("SELECT * FROM pending_submit WHERE id=1").fetchone()
-    if not row:
-        return None
-    if row["expires_at"] < _now():
-        conn.execute("DELETE FROM pending_submit WHERE id=1")
-        return None
-    return row
+def list_pending_submit(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every not-yet-expired pending confirmation, oldest first. Clears
+    expired rows first so no caller has to separately check freshness."""
+    conn.execute("DELETE FROM pending_submit WHERE expires_at < ?", (_now(),))
+    return conn.execute(
+        "SELECT * FROM pending_submit ORDER BY requested_at"
+    ).fetchall()
 
 
-def clear_pending_submit(conn: sqlite3.Connection) -> None:
-    conn.execute("DELETE FROM pending_submit WHERE id=1")
+def get_pending_submit(
+    conn: sqlite3.Connection, company: str | None = None
+) -> tuple[sqlite3.Row | None, str | None]:
+    """Resolve which pending confirmation a "CONFIRM" (optionally
+    "CONFIRM <company>") reply refers to.
+
+    -> (row, error). Exactly one of the two is set. `error` is
+    plain-text, ready to show PJ as-is: "nothing pending", "no match for
+    X", or -- when more than one job is waiting and no company was named
+    to disambiguate -- the list of companies to choose from.
+    """
+    rows = list_pending_submit(conn)
+
+    if company:
+        low = company.strip().lower()
+        matches = [r for r in rows if low in r["company"].lower()]
+        if not matches:
+            return None, f"No pending confirmation for '{company}'."
+        if len(matches) > 1:
+            names = ", ".join(r["company"] for r in matches)
+            return None, (f"Multiple pending jobs match '{company}': "
+                          f"{names}. Be more specific.")
+        return matches[0], None
+
+    if not rows:
+        return None, ("Nothing is pending confirmation right now. It may "
+                      "have expired (10 minute window) — send "
+                      "/apply <company> again.")
+    if len(rows) > 1:
+        names = ", ".join(r["company"] for r in rows)
+        return None, (f"{len(rows)} jobs are pending confirmation: "
+                      f"{names}. Reply CONFIRM <company>.")
+    return rows[0], None
+
+
+def clear_pending_submit(conn: sqlite3.Connection, job_key: str) -> None:
+    conn.execute("DELETE FROM pending_submit WHERE job_key=?", (job_key,))
 
 
 def set_status(conn: sqlite3.Connection, key: str, status: str) -> bool:

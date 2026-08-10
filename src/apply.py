@@ -424,10 +424,15 @@ def report_card(rep: FillReport) -> str:
     return "\n".join(lines)
 
 
-def confirm_card(result: SubmitResult) -> str:
+def confirm_card(result: SubmitResult, disambiguate: bool = False) -> str:
     """Shown before a real submission — this is the confirmation prompt
     itself, so it must show exactly what will be sent and never imply
-    anything has happened yet."""
+    anything has happened yet.
+
+    `disambiguate` is set once more than one job is simultaneously
+    pending confirmation — PJ then needs to name which one, since a bare
+    CONFIRM is only unambiguous when a single job is waiting.
+    """
     import html as _h
     e = _h.escape
     rep = result.rep
@@ -446,12 +451,14 @@ def confirm_card(result: SubmitResult) -> str:
     ]
     if rep.unanswered:
         lines.append(f"<i>{len(rep.unanswered)} optional field(s) left blank</i>")
-    lines += [
-        "",
-        "<b>This cannot be undone once sent.</b>",
-        "Reply <code>CONFIRM</code> to submit for real, or anything else "
-        "to cancel.",
-    ]
+    lines += ["", "<b>This cannot be undone once sent.</b>"]
+    if disambiguate:
+        lines.append(f"Reply <code>CONFIRM {e(rep.company)}</code> to submit "
+                     f"this one for real — another job is also waiting on "
+                     f"you, so a bare CONFIRM won't know which you mean.")
+    else:
+        lines.append("Reply <code>CONFIRM</code> to submit for real, or "
+                     "anything else to cancel.")
     return "\n".join(lines)
 
 
