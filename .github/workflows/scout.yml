@@ -2,12 +2,18 @@ name: Job Scout
 
 # Runs on GitHub's infrastructure — PJ's laptop is irrelevant once this
 # is pushed. Times are UTC; IST is UTC+5:30.
-#   20:30 UTC = 02:00 IST
-#   08:30 UTC = 14:00 IST
+#   20:00 UTC = 01:30 IST (next day)
+#
+# Collapsed from twice daily to once, per PJ (2026-08-11): back-to-back
+# scans in close succession were making Instahyre's bot detection block
+# essentially every enrichment fetch (confirmed live — 20/20 blocked on
+# a run only 16 minutes after the previous one), and running once
+# nightly avoids that. Naukri and careerpages coverage was rebalanced
+# in scout.py to stay full-coverage and cost-neutral with only one run
+# (see NAUKRI_KEYWORDS and the careerpages call there).
 on:
   schedule:
-    - cron: "30 20 * * *"   # 02:00 IST
-    - cron: "30 8 * * *"    # 14:00 IST
+    - cron: "0 20 * * *"    # 01:30 IST
   workflow_dispatch:         # manual "Run workflow" button
     inputs:
       dry_run:

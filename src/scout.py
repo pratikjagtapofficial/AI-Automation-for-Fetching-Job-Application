@@ -48,23 +48,16 @@ def _truthy(v: str | None) -> bool:
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Rotated across runs to double keyword coverage at unchanged cost.
-NAUKRI_KEYWORD_SETS = [
-    ["AI Engineer", "AI Developer"],                    # 02:00 IST run
-    ["GenAI Engineer", "Machine Learning Engineer"],    # 14:00 IST run
+# Used to alternate across two daily runs; now queried together in the
+# single nightly run (see scout.yml, 2026-08-11 — collapsed from twice
+# daily to once to stop Instahyre's bot detection escalating on
+# back-to-back scans). Naukri is priced per RESULT, not per run or per
+# keyword batch, so combining these into one call is cost-neutral versus
+# the old rotation: the same four keywords get queried once a day either
+# way, just in one run instead of split across two.
+NAUKRI_KEYWORDS = [
+    "AI Engineer", "AI Developer", "GenAI Engineer", "Machine Learning Engineer",
 ]
-
-
-def _keyword_set() -> list[str]:
-    """Alternate on UTC hour. The 02:00 IST run is 20:30 UTC (hour 20),
-    the 14:00 IST run is 08:30 UTC (hour 8); anything else (a manual or
-    dispatched run) falls back to the primary set."""
-    from datetime import datetime, timezone
-    hour = datetime.now(timezone.utc).hour
-    override = os.environ.get("NAUKRI_KEYWORD_SET")
-    if override and override.isdigit():
-        return NAUKRI_KEYWORD_SETS[int(override) % len(NAUKRI_KEYWORD_SETS)]
-    return NAUKRI_KEYWORD_SETS[1] if 6 <= hour < 14 else NAUKRI_KEYWORD_SETS[0]
 
 
 def _cap_per_company(jobs: list, profile: dict) -> list:
@@ -111,13 +104,7 @@ def main() -> int:
     # Each keyword is one actor run at ~$0.021. Location stays "india":
     # Naukri's national search already spans every target city, so adding
     # cities multiplies cost for zero extra coverage.
-    #
-    # Keyword sets ALTERNATE between runs rather than all firing each
-    # time. Four keywords twice daily would cost ~$5.04/mo and blow the
-    # free tier on its own; rotating two per run covers all four daily at
-    # half that, and a posting missed in the morning is caught that night
-    # while still inside the 24h freshness window.
-    kw = _keyword_set()
+    kw = NAUKRI_KEYWORDS
     locs = ["india"]
     print(f"naukri keywords : {kw}")
     try:
@@ -178,26 +165,20 @@ def main() -> int:
         errors.append(f"instahyre: {type(e).__name__}")
         print(f"instahyre       : FAILED {e}")
 
-    # ── 5. Career pages / ATS aggregator (metered, once daily) ──────
-    # Naukri already spends ~$2.50/mo at 2x/day; adding this at 2x/day
-    # too would push combined Apify spend past the $5 free tier the same
-    # way the original Cowork-vs-pipeline collision did. Runs once daily
-    # instead, on the 14:00 IST slot (the one PJ is more reliably at his
-    # laptop for, though this source has no laptop dependency itself).
-    from datetime import datetime as _dt, timezone as _tz
-    if 6 <= _dt.now(_tz.utc).hour < 14 or _truthy(os.environ.get("FORCE_CAREERPAGES")):
-        try:
-            c_jobs, c_errs = careerpages.fetch(
-                ["AI Engineer", "AI Developer", "GenAI Engineer",
-                 "Machine Learning Engineer", "Agentic AI Engineer"])
-            all_jobs += c_jobs
-            errors += c_errs
-            print(f"careerpages     : {len(c_jobs)} postings")
-        except Exception as e:
-            errors.append(f"careerpages: {type(e).__name__}")
-            print(f"careerpages     : FAILED {e}")
-    else:
-        print("careerpages     : skipped (runs once/day to control Apify cost)")
+    # ── 5. Career pages / ATS aggregator (metered) ───────────────────
+    # Used to be gated to one of the two daily runs to avoid doubling its
+    # cost. Scout is now a single nightly run (see scout.yml, 2026-08-11),
+    # so that gate no longer does anything useful — it always runs.
+    try:
+        c_jobs, c_errs = careerpages.fetch(
+            ["AI Engineer", "AI Developer", "GenAI Engineer",
+             "Machine Learning Engineer", "Agentic AI Engineer"])
+        all_jobs += c_jobs
+        errors += c_errs
+        print(f"careerpages     : {len(c_jobs)} postings")
+    except Exception as e:
+        errors.append(f"careerpages: {type(e).__name__}")
+        print(f"careerpages     : FAILED {e}")
 
     print(f"total fetched   : {len(all_jobs)}")
 
