@@ -72,11 +72,20 @@ jobs:
       - name: Persist tracker
         # The SQLite file is the dedupe memory. Without committing it back,
         # every run would treat every posting as new and re-notify.
+        #
+        # Confirmed live 2026-08-10: a scheduled scan's own scout run
+        # completed cleanly (fetched 5460, relevant 25, notified 4 --
+        # results reached Telegram fine) but the whole job still reported
+        # "failed" because this step's plain `git push` raced a concurrent
+        # command.yml push (a dispatched /apply test) and got rejected as
+        # a non-fast-forward. command.yml already rebases before pushing;
+        # this step never did. Now it does, matching that.
         run: |
           git config user.name  "job-scout[bot]"
           git config user.email "job-scout@users.noreply.github.com"
           git add data/jobs.db
           git diff --staged --quiet || git commit -m "tracker: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git pull --rebase --autostash origin main || true
           git push
 
       - name: Alert on failure
