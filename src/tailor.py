@@ -128,6 +128,15 @@ def build_prompt(job, resume: dict, profile: dict) -> str:
    read as padded, not stronger. If you cannot mirror the job's
    vocabulary within the same length, keep more of the original wording
    rather than exceed it.
+7. NEVER use these AI-cliche filler phrases, in headline, summary, or
+   bullets -- they read as generic and reviewers flag them instantly:
+   "results-driven", "strategic thinker", "proven track record", "team
+   player", "responsible for", "worked on", "assisted with". Prefer a
+   concrete verb over a vague one ("led", "built", "reduced" over
+   "helped with", "was involved in").
+8. NEVER use an em dash (—) anywhere in your output. Use a comma,
+   parentheses, or a period instead. Long dashes are one of the most
+   obvious tells that text was AI-generated rather than human-written.
 
 # WHAT YOU MAY DO
 - Choose a headline that fits the job (from the variants, or compose one

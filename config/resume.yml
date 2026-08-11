@@ -49,8 +49,8 @@ headline:
 summary:
   default: >-
     AI/ML Engineer with hands-on experience across the full machine learning
-    workflow — data preprocessing, feature engineering, model building, and
-    evaluation — using Python, Pandas, and Scikit-learn. Skilled in applying
+    workflow (data preprocessing, feature engineering, model building, and
+    evaluation) using Python, Pandas, and Scikit-learn. Skilled in applying
     Generative AI and Large Language Models (LLMs), including
     Retrieval-Augmented Generation (RAG) pipelines and prompt engineering, to
     turn data into actionable insights and automate real business workflows.
@@ -115,8 +115,8 @@ experience:
     bullets:
       - id: rx1
         text: >-
-          Applied data analysis and machine learning techniques — using
-          Python, Pandas, and Scikit-learn — to solve business problems for
+          Applied data analysis and machine learning techniques, using
+          Python, Pandas, and Scikit-learn, to solve business problems for
           enterprise clients.
         tags: [Python, Pandas, Scikit-learn]
       - id: rx2
@@ -139,8 +139,8 @@ projects:
     bullets:
       - id: an1
         text: >-
-          Built ML/AI pipelines automating high-volume recruitment tasks —
-          sourcing, screening, submission — using LangChain, RAG, and vector
+          Built ML/AI pipelines automating high-volume recruitment tasks
+          (sourcing, screening, submission) using LangChain, RAG, and vector
           databases.
         tags: [LangChain, Retrieval-Augmented Generation (RAG), Vector Databases]
       - id: an2

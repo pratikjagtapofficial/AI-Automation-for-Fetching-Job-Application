@@ -205,7 +205,11 @@ def tailored_card(job: Job, result) -> str:
         lines += ["", f"<i>{e(result.rationale[:220])}</i>"]
 
     if result.verdict and result.verdict.warnings:
-        lines += ["", "⚠️ <b>Be ready to qualify</b>"]
+        # Mixes two kinds now: "be ready to qualify this in an interview"
+        # (shallow skills) and "this slipped past the no-AI-cliche rules"
+        # (check_ai_tells) -- both are heads-up items, neither blocks the
+        # tailoring, so one neutral heading covers both honestly.
+        lines += ["", "⚠️ <b>Heads up</b>"]
         lines += [f"• {e(w)}" for w in result.verdict.warnings[:3]]
 
     lines += ["", f"<i>Full diff: /diff {e(job.company)}</i>"]

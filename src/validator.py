@@ -113,6 +113,28 @@ def check_bullet_provenance(source_ids: set[str],
     return out
 
 
+# Cliche phrases and formatting tells that read as AI-generated rather
+# than human-written -- flagged here as a WARNING (not a hard reject like
+# the checks above) because this is a style/quality issue, not a
+# truthfulness one. The tailor prompt already forbids these (rules 7-8 in
+# build_prompt); this is defense in depth for whatever slips through.
+_AI_TELL_PHRASES = (
+    "results-driven", "strategic thinker", "proven track record",
+    "team player", "responsible for", "worked on", "assisted with",
+)
+
+
+def check_ai_tells(text: str) -> list[str]:
+    out = []
+    low = text.lower()
+    for phrase in _AI_TELL_PHRASES:
+        if phrase in low:
+            out.append(f"AI-cliche phrase in output: '{phrase}'")
+    if "—" in text:
+        out.append("em dash (—) in output — reads as AI-generated formatting")
+    return out
+
+
 def validate(tailored_text: str, profile: dict,
              original: dict | None = None,
              tailored: dict | None = None,
@@ -143,5 +165,7 @@ def validate(tailored_text: str, profile: dict,
                 f"'{skill}' is on the resume but PJ has only light "
                 f"experience — be ready to qualify it"
             )
+
+    warnings += check_ai_tells(tailored_text)
 
     return Verdict(ok=not violations, violations=violations, warnings=warnings)
