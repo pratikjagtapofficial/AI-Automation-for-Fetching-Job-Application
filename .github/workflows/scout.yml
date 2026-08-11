@@ -23,9 +23,19 @@ on:
   repository_dispatch:       # fired by /scan from Telegram
     types: [run-scout]
 
-# A slow run must never overlap the next scheduled one.
+# Shared with command.yml (2026-08-11): both this workflow AND command.yml
+# write to data/jobs.db, and that's a binary SQLite file -- `git rebase`
+# cannot 3-way-merge two conflicting binary changes the way it can with
+# text, so if a scheduled scan and a dispatched command (e.g. /apply)
+# ever ran at the same time, the loser's push would fail outright and no
+# amount of retrying would fix it, since the conflict is real content
+# overlap, not just timing. Confirmed live: this caused two of the last
+# three "Job scout failed" alerts. Giving both workflows the SAME
+# concurrency group name makes GitHub Actions queue them instead of
+# racing them -- the real fix is never letting the collision happen, not
+# trying to resolve it after the fact.
 concurrency:
-  group: job-scout
+  group: jobs-db-writer
   cancel-in-progress: false
 
 permissions:
@@ -79,20 +89,28 @@ jobs:
         # The SQLite file is the dedupe memory. Without committing it back,
         # every run would treat every posting as new and re-notify.
         #
-        # Confirmed live 2026-08-10: a scheduled scan's own scout run
-        # completed cleanly (fetched 5460, relevant 25, notified 4 --
-        # results reached Telegram fine) but the whole job still reported
-        # "failed" because this step's plain `git push` raced a concurrent
-        # command.yml push (a dispatched /apply test) and got rejected as
-        # a non-fast-forward. command.yml already rebases before pushing;
-        # this step never did. Now it does, matching that.
+        # Confirmed live 2026-08-10: two of the last three "Job scout
+        # failed" alerts were this step's `git push` racing a concurrent
+        # command.yml push (a dispatched /apply, or CONFIRM) to the same
+        # data/jobs.db. The real fix is the shared `jobs-db-writer`
+        # concurrency group above, which stops that race from happening at
+        # all. This retry loop (matching social.yml's proven pattern) is
+        # defense in depth for anything else transient -- it only fails
+        # loudly, triggering the alert below, if 5 attempts all fail.
         run: |
           git config user.name  "job-scout[bot]"
           git config user.email "job-scout@users.noreply.github.com"
           git add data/jobs.db
-          git diff --staged --quiet || git commit -m "tracker: $(date -u +%Y-%m-%dT%H:%MZ)"
-          git pull --rebase --autostash origin main || true
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "tracker: $(date -u +%Y-%m-%dT%H:%MZ)"
+          for attempt in 1 2 3 4 5; do
+            git push && exit 0
+            echo "push rejected (attempt $attempt) — rebasing onto latest main and retrying"
+            git pull --rebase --autostash origin main
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push data/jobs.db after 5 attempts"
+          exit 1
 
       - name: Alert on failure
         if: failure()

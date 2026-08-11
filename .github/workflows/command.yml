@@ -6,11 +6,16 @@ on:
   repository_dispatch:
     types: [telegram-command]
 
-# Commands are cheap but Actions bills a minimum of one minute per run.
-# Queueing rather than cancelling means two commands sent together both
-# get answered.
+# Shared with scout.yml (2026-08-11): this workflow's `command` and
+# `scan` jobs both write to data/jobs.db, same as scout.yml's scheduled
+# scan. That's a binary SQLite file, so a race between two pushes to it
+# can't be rebased away -- confirmed live, this caused two of the last
+# three "Job scout failed" alerts. Same group name as scout.yml means
+# GitHub Actions queues them against each other instead of racing.
+# Queueing rather than cancelling means commands sent together, or during
+# a scan, all still get answered -- just not instantly.
 concurrency:
-  group: telegram-command
+  group: jobs-db-writer
   cancel-in-progress: false
 
 permissions:
@@ -61,14 +66,22 @@ jobs:
       - name: Persist any Answer Bank change
         # /answer writes PJ's reply into config/answers.yml. Without
         # committing it back, the runner is discarded and he would be
-        # asked the same question again on the next scan.
+        # asked the same question again on the next scan. A push failure
+        # here stays non-fatal to the job -- the Telegram reply already
+        # sent matters more than persistence timing -- but retries first
+        # rather than giving up on the first rejection.
         run: |
           git config user.name  "job-scout[bot]"
           git config user.email "job-scout@users.noreply.github.com"
           git add config/answers.yml data/jobs.db 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "answers: via Telegram"
-          git pull --rebase --autostash origin main || true
-          git push || true
+          git diff --staged --quiet && exit 0
+          git commit -m "answers: via Telegram"
+          for attempt in 1 2 3; do
+            git push && exit 0
+            git pull --rebase --autostash origin main || true
+            sleep $((attempt * 3))
+          done
+          echo "::warning::could not push answers/tracker after 3 attempts"
 
   # A /scan command runs the real scan as a separate job so the command
   # reply is not blocked behind a multi-minute pipeline.
@@ -96,6 +109,11 @@ jobs:
           git config user.name  "job-scout[bot]"
           git config user.email "job-scout@users.noreply.github.com"
           git add data/jobs.db
-          git diff --staged --quiet || git commit -m "tracker: manual scan"
-          git pull --rebase --autostash origin main || true
-          git push || true
+          git diff --staged --quiet && exit 0
+          git commit -m "tracker: manual scan"
+          for attempt in 1 2 3; do
+            git push && exit 0
+            git pull --rebase --autostash origin main || true
+            sleep $((attempt * 3))
+          done
+          echo "::warning::could not push tracker after 3 attempts"
