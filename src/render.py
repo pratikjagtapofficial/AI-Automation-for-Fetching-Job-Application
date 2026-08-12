@@ -36,9 +36,9 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (BaseDocTemplate, Frame, HRFlowable, KeepTogether,
                                 PageTemplate, Paragraph, Spacer, Table, TableStyle)
 
-# Matches the source template's accent colour, used consistently for the
-# headline, section headings, rules, and hyperlink text.
-BLUE = HexColor("#1155CC")
+# Used ONLY for hyperlink text (email/LinkedIn/GitHub, via link() below).
+# Everything else on the page is INK -- see _ruled_heading()'s comment.
+LINK_BLUE = "#1155CC"
 INK = black
 
 DENSITY_STEPS = [
@@ -76,7 +76,8 @@ def _styles(d: dict) -> dict:
                                fontSize=d["body"] - 0.3, leading=d["lead"],
                                textColor=INK, alignment=TA_LEFT),
         "bullet": ParagraphStyle("bullet", fontSize=d["body"], leftIndent=12,
-                                 bulletIndent=0, spaceAfter=1.2, **base),
+                                 bulletIndent=0, spaceAfter=1.2,
+                                 bulletFontSize=d["body"] * 0.55, **base),
     }
 
 
@@ -120,7 +121,16 @@ def _bullet_text(resume: dict, bid: str, tailored: dict | None) -> str | None:
 
 def _row(left_flow, right_text: str, st: dict, width: float):
     """Title/company on the left, italic date range flush right — the
-    layout the source template uses for every entry heading line."""
+    layout the source template uses for every entry heading line.
+
+    VALIGN is TOP, not BOTTOM: when the left cell wraps to a second line
+    (a long institution name in Education, mainly), a bottom-aligned date
+    sits next to that wrapped second line instead of the first line it
+    actually belongs to — confirmed live, this put the date under a
+    lone-hanging "Pune" instead of next to "Bachelor of Computer
+    Applications (BCA), ...". Top-aligning pins the date to the first
+    line every time, matching how dates sit on a normal resume.
+    """
     right = Paragraph(_esc(right_text), st["date"]) if right_text else Paragraph("", st["date"])
     t = Table([[left_flow, right]], colWidths=[width * 0.72, width * 0.28])
     t.setStyle(TableStyle([
@@ -128,16 +138,19 @@ def _row(left_flow, right_text: str, st: dict, width: float):
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
     ]))
     return t
 
 
 def _ruled_heading(text: str, st: dict) -> list:
+    # Rule is black, not blue, per PJ (2026-08-11): blue was reserved for
+    # actual hyperlink text (email/LinkedIn/GitHub via link()) only —
+    # everything else on the page, including these section rules, is black.
     return [
         Paragraph(text.upper(), st["section"]),
-        HRFlowable(width="100%", thickness=0.8, color=BLUE, spaceAfter=3,
+        HRFlowable(width="100%", thickness=0.8, color=INK, spaceAfter=3,
                   spaceBefore=0),
     ]
 
@@ -153,7 +166,7 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
     flow.append(Paragraph(_esc(headline), st["headline"]))
 
     def link(label, url):
-        return f'<link href="{_esc(url)}" color="#1155CC"><u>{_esc(label)}</u></link>'
+        return f'<link href="{_esc(url)}" color="{LINK_BLUE}"><u>{_esc(label)}</u></link>'
 
     bits = [c.get("location"), c.get("phone")]
     bits = [_esc(b) for b in bits if b]
