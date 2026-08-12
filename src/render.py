@@ -30,9 +30,8 @@ from pathlib import Path
 
 from reportlab.lib.colors import HexColor, black
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import mm
 from reportlab.platypus import (BaseDocTemplate, Frame, HRFlowable, KeepTogether,
                                 PageTemplate, Paragraph, Spacer, Table, TableStyle)
 
@@ -41,38 +40,52 @@ from reportlab.platypus import (BaseDocTemplate, Frame, HRFlowable, KeepTogether
 LINK_BLUE = "#1155CC"
 INK = black
 
+# "lead" (line leading) ratio to body size was 1.35x, visibly looser than
+# a real Word resume. Measured PJ's actual source PDF directly
+# (pdfplumber, per-line vertical gaps, 2026-08-11): its dominant
+# within-paragraph line gap is ~11.5pt at 10pt body -- a 1.15x ratio.
+# Retuned every step to that ratio, which is also what let body text
+# fit at the source's own 10.0pt on one page instead of needing to
+# shrink to 9.5pt.
 DENSITY_STEPS = [
-    {"body": 10.0, "lead": 13.5, "gap": 5.0, "sec": 11.5},
-    {"body": 9.5, "lead": 12.8, "gap": 4.2, "sec": 11.0},
-    {"body": 9.0, "lead": 12.1, "gap": 3.4, "sec": 10.5},
-    {"body": 8.5, "lead": 11.4, "gap": 2.6, "sec": 10.0},
+    {"body": 10.0, "lead": 11.5, "gap": 4.0, "sec": 11.5},
+    {"body": 9.5, "lead": 10.9, "gap": 3.4, "sec": 11.0},
+    {"body": 9.0, "lead": 10.35, "gap": 2.8, "sec": 10.5},
+    {"body": 8.5, "lead": 9.8, "gap": 2.2, "sec": 10.0},
 ]
 
 
 def _styles(d: dict) -> dict:
-    base = dict(fontName="Helvetica", textColor=INK, leading=d["lead"])
+    # Times, not Helvetica -- measured directly from PJ's source PDF
+    # (pdfplumber font-name extraction, 2026-08-11): it's set entirely in
+    # TimesNewRomanPSMT/Bold/Italic. Times-Roman/-Bold/-Italic are
+    # ReportLab's base-14 standard fonts (same category Helvetica was,
+    # always available, no bundling/licensing issue) and render as the
+    # same Times family shape.
+    base = dict(fontName="Times-Roman", textColor=INK, leading=d["lead"])
     return {
-        "name": ParagraphStyle("name", fontName="Helvetica-Bold", fontSize=18,
-                               leading=20, textColor=INK, alignment=TA_CENTER,
+        # 20pt, matching the source PDF's name line exactly (measured).
+        "name": ParagraphStyle("name", fontName="Times-Bold", fontSize=20,
+                               leading=22, textColor=INK, alignment=TA_CENTER,
                                spaceAfter=2),
-        "headline": ParagraphStyle("headline", fontName="Helvetica-Bold",
+        "headline": ParagraphStyle("headline", fontName="Times-Bold",
                                    fontSize=d["body"] + 1.2, leading=d["lead"],
                                    textColor=INK, alignment=TA_CENTER,
                                    spaceAfter=2),
-        "contact": ParagraphStyle("contact", fontName="Helvetica",
+        "contact": ParagraphStyle("contact", fontName="Times-Roman",
                                   fontSize=d["body"] - 0.2, leading=d["lead"] - 1,
                                   textColor=INK, alignment=TA_CENTER),
-        "section": ParagraphStyle("section", fontName="Helvetica-Bold",
+        "section": ParagraphStyle("section", fontName="Times-Bold",
                                   fontSize=d["sec"], leading=d["sec"] + 2,
                                   textColor=INK, spaceBefore=d["gap"] + 2,
                                   spaceAfter=1, alignment=TA_LEFT),
         "body": ParagraphStyle("body", fontSize=d["body"], **base),
         "summary": ParagraphStyle("summary", fontSize=d["body"],
                                   alignment=TA_JUSTIFY, **base),
-        "role": ParagraphStyle("role", fontName="Helvetica-Bold",
+        "role": ParagraphStyle("role", fontName="Times-Bold",
                                fontSize=d["body"] + 0.3, leading=d["lead"],
                                textColor=INK),
-        "date": ParagraphStyle("date", fontName="Helvetica-Oblique",
+        "date": ParagraphStyle("date", fontName="Times-Italic",
                                fontSize=d["body"] - 0.3, leading=d["lead"],
                                textColor=INK, alignment=TA_LEFT),
         "bullet": ParagraphStyle("bullet", fontSize=d["body"], leftIndent=12,
@@ -213,17 +226,19 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
             for b in entry.get("bullets") or []:
                 txt = _bullet_text(resume, b.get("id", ""), tailored)
                 if txt:
-                    # "•" (U+2022) was tested against this template and
-                    # rejected: it extracts as a control character (\x7f)
-                    # from ReportLab's base-14 Helvetica, confirmed
-                    # independent of the bulletText mechanism -- it breaks
-                    # even typed directly into the paragraph text. A real
-                    # TrueType font fixes it, but Arial can't be bundled
-                    # into the repo (redistribution licensing) and isn't
-                    # present on the Ubuntu Actions runner, so that fix
-                    # isn't portable. "●" is confirmed clean on this exact
-                    # stack, which the ATS-passing requirement outweighs
-                    # over an exact bullet-glyph match.
+                    # "•" (U+2022) breaks under ReportLab's base-14 fonts --
+                    # extracts as a control character (cid:127), independent
+                    # of the bulletText mechanism, it breaks even typed
+                    # directly into the paragraph text. Re-confirmed
+                    # 2026-08-11 after switching Helvetica -> Times-Roman:
+                    # same corruption under Times-Roman too, so this isn't a
+                    # Helvetica-specific quirk. A real embedded TrueType font
+                    # fixes it, but Times New Roman's actual font file can't
+                    # be bundled into the repo (redistribution licensing)
+                    # and isn't present on the Ubuntu Actions runner, so
+                    # that fix isn't portable. "●" is confirmed clean on
+                    # this stack, which the ATS-passing requirement
+                    # outweighs over an exact bullet-glyph match.
                     block.append(Paragraph(_esc(txt), st["bullet"], bulletText="●"))
             flow.append(KeepTogether(block))
 
@@ -274,15 +289,20 @@ def render(resume: dict, out_path: str | Path,
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    left_margin = right_margin = 16 * mm
-    content_width = A4[0] - left_margin - right_margin
+    # Measured directly from PJ's actual source PDF (pdfplumber, per-char
+    # bounding boxes), 2026-08-11 — not eyeballed. It's US Letter
+    # (612x792pt), not A4, and its margins are left/right ~35pt (~12.4mm),
+    # top ~26pt (~9.2mm), bottom ~35pt (~12.4mm).
+    left_margin = right_margin = 35
+    top_margin, bottom_margin = 26, 35
+    content_width = letter[0] - left_margin - right_margin
 
     pages = 99
     for step in DENSITY_STEPS:
         doc = _Counter(
-            str(out), pagesize=A4,
+            str(out), pagesize=letter,
             leftMargin=left_margin, rightMargin=right_margin,
-            topMargin=12 * mm, bottomMargin=11 * mm,
+            topMargin=top_margin, bottomMargin=bottom_margin,
             title=f"{resume['contact']['name']} - Resume",
             author=resume["contact"]["name"],
             subject=(tailored or {}).get("headline") or resume["headline"]["default"],
