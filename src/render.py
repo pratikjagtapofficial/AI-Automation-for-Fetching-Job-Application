@@ -47,11 +47,20 @@ INK = black
 # Retuned every step to that ratio, which is also what let body text
 # fit at the source's own 10.0pt on one page instead of needing to
 # shrink to 9.5pt.
+# "gap" (space before section headings, and now also between multiple
+# entries in one section -- see entries()) was similarly under-tuned:
+# the source PDF's own content reaches to within 35pt of the bottom
+# margin; ours stopped 83pt short at the old gap=4.0, meaning our
+# spacing was tighter than the source's despite matching font/size/
+# leading. Swept gap values empirically against the real source's
+# measured bottom whitespace (pdfplumber) rather than guessing further
+# -- 7.8 lands at 34.8pt, matching the source's 35.3pt almost exactly,
+# while still holding body text at the source's own 10.0pt on one page.
 DENSITY_STEPS = [
-    {"body": 10.0, "lead": 11.5, "gap": 4.0, "sec": 11.5},
-    {"body": 9.5, "lead": 10.9, "gap": 3.4, "sec": 11.0},
-    {"body": 9.0, "lead": 10.35, "gap": 2.8, "sec": 10.5},
-    {"body": 8.5, "lead": 9.8, "gap": 2.2, "sec": 10.0},
+    {"body": 10.0, "lead": 11.5, "gap": 7.8, "sec": 11.5},
+    {"body": 9.5, "lead": 10.9, "gap": 7.4, "sec": 11.0},
+    {"body": 9.0, "lead": 10.35, "gap": 7.0, "sec": 10.5},
+    {"body": 8.5, "lead": 9.8, "gap": 6.6, "sec": 10.0},
 ]
 
 
@@ -211,7 +220,15 @@ def _build(resume: dict, tailored: dict | None, d: dict, width: float) -> list:
         if not rows:
             return
         flow.extend(_ruled_heading(heading, st))
-        for entry in rows:
+        for i, entry in enumerate(rows):
+            if i > 0:
+                # A second role/project in the same section had NO gap
+                # before it -- confirmed against the source PDF's own
+                # line positions, which put a real ~5.5pt gap here (e.g.
+                # between HireTalent's last bullet and the next role
+                # heading). Without this, multiple entries visibly bunch
+                # together compared to the source.
+                flow.append(Spacer(1, d["gap"] * 0.75))
             if section == "experience":
                 left_text = (f'<b>{_esc(entry["role"])}</b>  |  '
                             f'{_esc(entry["company"])}'
