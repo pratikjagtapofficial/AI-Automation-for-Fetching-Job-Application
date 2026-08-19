@@ -239,6 +239,15 @@ search:
 blacklist:
   companies:
     - HireTalent
+    # IT staffing firms that reached the Telegram cards from Foundit on
+    # 2026-08-19. Listed by name rather than by adding "solutions" to the
+    # keyword stems below, which would also block real employers
+    # (Salvo Software, Zoho-style names, etc). Foundit reports EVERY
+    # employer as employerTypes=['Company'], including these two, so its
+    # own data cannot distinguish them -- the name list is the only gate.
+    # Remove either if PJ decides he does want to hear from them.
+    - Teamware Solutions
+    - BayOne Solutions
   client_companies: []     # TODO(PJ): critical for the quiet search
   keywords:
     # Substring-matched against the company name. "Telomere Consulting"
