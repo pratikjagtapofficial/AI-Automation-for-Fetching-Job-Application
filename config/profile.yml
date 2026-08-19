@@ -133,6 +133,22 @@ skills:
       VPS infrastructure and would be learning K8s from the ground up.
 
 search:
+  # Matched as SUBSTRINGS against the job title (see scorer._title_matches),
+  # so "AI Engineer" catches "Senior AI Engineer" too -- seniority is
+  # removed separately by exclude_titles below, which is why adding
+  # variants here is safe.
+  #
+  # Widened 2026-08-19 after auditing what the filter was actually
+  # discarding: 126 of 329 Hirist postings had clearly AI/ML-relevant
+  # titles yet failed this list. The gap was spelling variants rather
+  # than genuinely different roles -- "AI/ML Developer" and "Artificial
+  # Intelligence Engineer" (the unabbreviated form, which "AI Engineer"
+  # does NOT substring-match) are both common on Indian boards and both
+  # were invisible. Verified after widening: the newly-matched postings
+  # are still correctly rejected downstream when they deserve to be
+  # (7 on "Senior", 1 each on Staff/Lead/Principal/II, 6 on years
+  # required), so this widens genuine reach without weakening the
+  # entry-level guarantee.
   titles:
     - AI Developer
     - AI Engineer
@@ -145,6 +161,28 @@ search:
     - LLM Engineer
     - Applied AI Engineer
     - AI/ML Engineer
+    # Spelling/word-order variants of the same roles above.
+    - AI/ML Developer
+    - AI ML Developer
+    - ML Developer
+    - Artificial Intelligence Engineer
+    - Artificial Intelligence Developer
+    - AI Application Developer
+    - AI Application Engineer
+    - AI Software Engineer
+    - AI Software Developer
+    - AI Python Developer
+    - AI Automation Engineer
+    - GenAI Developer
+    - Generative AI Developer
+    - AI Platform Engineer
+    # Adjacent specialisations PJ has real, resume-backed skills in
+    # (YOLO/Computer Vision, NLP, deep learning, MLOps-adjacent work).
+    - Deep Learning Engineer
+    - NLP Engineer
+    - Computer Vision Engineer
+    - Data Science Engineer
+    - MLOps Engineer
 
   exclude_titles:
     [Senior, Sr., Staff, Lead, Principal, Manager, Head, Director,
@@ -177,14 +215,18 @@ search:
     - {name: Gurugram,   weight: 0.95}
     - {name: India,      weight: 0.90}
 
-  # Widened from 24h. That cutoff came from the Cowork task, which had no
-  # persistent memory and re-scanned fresh each run, so a short window was
-  # how it avoided re-showing the same jobs. This pipeline dedupes against
-  # the tracker instead, so the window no longer has that job to do — and
-  # at 24h it was discarding most of what the sources returned (Hirist:
-  # 1 of 328 passed at 24h, 3 at 168h). A role posted five days ago that
-  # PJ has not seen is still worth applying to.
-  freshness_hours: 168
+  # Widened again 168 -> 720 (30 days) on 2026-08-19, for the same reason
+  # it went 24 -> 168: this window's original job (stopping repeat
+  # notifications) is already done by the tracker's dedupe, so its only
+  # remaining effect is discarding postings PJ has never seen. Measured
+  # on a live Hirist pull: 13 postings passed every other filter --
+  # right title, right location, entry-level experience -- and were
+  # dropped purely for age. A four-week-old posting PJ has never seen is
+  # still worth applying to; a genuinely filled role costs him one
+  # ignored Telegram card, which is much cheaper than a missed match.
+  # Kept finite rather than removed: past ~a month, listings on these
+  # boards are mostly stale reposts.
+  freshness_hours: 720
 
   # Official postings only — company's own listing, not an agency repost.
   official_only: true

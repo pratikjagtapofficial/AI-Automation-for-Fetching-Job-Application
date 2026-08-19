@@ -25,9 +25,10 @@ from datetime import datetime, timezone
 
 import httpx
 
+from . import apify_status
 from .sources import Job
 
-RUN_SYNC = "https://api.apify.com/v2/acts/fantastic-jobs~career-site-job-listing-api/run-sync-get-dataset-items"
+RUN_SYNC ="https://api.apify.com/v2/acts/fantastic-jobs~career-site-job-listing-api/run-sync-get-dataset-items"
 
 
 def _parse_date(raw: str | None) -> datetime | None:
@@ -105,7 +106,7 @@ def fetch(titles: list[str], token: str | None = None,
                 },
             )
             if r.status_code >= 400:
-                return [], [f"careerpages: HTTP {r.status_code}"]
+                return [], [apify_status.explain(r, "careerpages")]
             items = r.json()
             if not isinstance(items, list):
                 return [], ["careerpages: unexpected payload"]

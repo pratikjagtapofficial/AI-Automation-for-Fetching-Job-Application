@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from . import apify_status
 from .sources import Job
 
 ACTOR = "valig~naukri-jobs-scraper"
@@ -123,8 +124,14 @@ def fetch(keywords: list[str], locations: list[str],
                         },
                     )
                     if r.status_code >= 400:
-                        errors.append(
-                            f"naukri[{kw}/{loc}]: HTTP {r.status_code}")
+                        err = apify_status.explain(r, f"naukri[{kw}/{loc}]")
+                        errors.append(err)
+                        if apify_status.is_quota_error(err):
+                            # Every remaining keyword will hit the same
+                            # wall; four identical credit-exhausted lines
+                            # just bury the other source problems.
+                            return list({j.job_id or j.url: j
+                                         for j in jobs}.values()), errors
                         continue
                     items = r.json()
                     if not isinstance(items, list):

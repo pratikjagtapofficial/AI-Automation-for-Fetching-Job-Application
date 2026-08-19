@@ -241,7 +241,24 @@ def run_summary(fetched: int, scored: int, sent: int, errors: list[str]) -> str:
         "✅ <b>Scan finished</b>",
         f"fetched <b>{fetched}</b> · relevant <b>{scored}</b> · notified <b>{sent}</b>",
     ]
-    if errors:
+
+    # A source that is DEAD (not just noisy) gets its own block above the
+    # ordinary problem list. The old code truncated every error to the
+    # first 6 lines equally, so "Apify credit exhausted, two sources are
+    # down indefinitely" could be pushed out by routine per-job noise --
+    # which is how three consecutive scans delivered zero jobs without
+    # that being obvious. See apify_status.py.
+    fatal = [e for e in errors if "APIFY FREE CREDIT EXHAUSTED" in e]
+    rest = [e for e in errors if e not in fatal]
+
+    if fatal:
+        lines += ["", "🛑 <b>A SOURCE IS DOWN — not a glitch</b>"]
+        lines += [f"• {html.escape(x)}" for x in fatal]
+        lines.append("<i>Paid sources stay dead until the Apify monthly "
+                     "cycle resets. Free sources are unaffected.</i>")
+    if rest:
         lines += ["", "⚠️ <b>Source problems</b>"]
-        lines += [f"• {html.escape(x)}" for x in errors[:6]]
+        lines += [f"• {html.escape(x)}" for x in rest[:6]]
+        if len(rest) > 6:
+            lines.append(f"<i>…and {len(rest) - 6} more</i>")
     return "\n".join(lines)
