@@ -22,7 +22,7 @@ import yaml
 
 from . import apply as applier
 from . import callprep
-from . import careerpages, hirist, instahyre, naukri, store
+from . import careerpages, foundit, hirist, instahyre, naukri, store
 from .notify import (Telegram, digest, run_summary, strong_fit_card,
                      tailored_card)
 from .render import render
@@ -132,6 +132,25 @@ def main() -> int:
     except Exception as e:
         errors.append(f"hirist: {type(e).__name__}")
         print(f"hirist          : FAILED {e}")
+
+    # ── 3b. Foundit / Monster India (free JSON API, no key, no credits) ──
+    # Added 2026-08-19 to keep India coverage alive while Apify's free
+    # credit is exhausted (Naukri + careerpages both dead until the cycle
+    # resets). Same shape of source as Hirist -- structured experience
+    # integers and an epoch posting date -- so it needs no browser and no
+    # regex-guessing. See foundit.py for what else was tested and rejected.
+    try:
+        f_jobs, f_errs = foundit.fetch(
+            ["AI Engineer", "AI Developer", "GenAI Engineer",
+             "Machine Learning Engineer"],
+            official_only=profile["search"].get("official_only", True),
+        )
+        all_jobs += f_jobs
+        errors += f_errs
+        print(f"foundit         : {len(f_jobs)} postings")
+    except Exception as e:
+        errors.append(f"foundit: {type(e).__name__}")
+        print(f"foundit         : FAILED {e}")
 
     # ── 4. Instahyre (free JSON API; no posting dates, no JD text) ──
     # The API never returns a description body or a years-of-experience
