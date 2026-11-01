@@ -1,4 +1,4 @@
-# AI-Automation-for-Fetching-Jobs-Job-Application
+# AI-Automation-for-Fetching-Job-Application
 
 ## LinkedIn draft bot
 

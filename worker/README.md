@@ -59,7 +59,7 @@ wrangler secret put GH_REPO
 - `CHAT_ID` — `1858655236`
 - `WEBHOOK_SECRET` — any random string you invent; it must match step 6
 - `GH_TOKEN` — the PAT from step 3
-- `GH_REPO` — `pratikjagtapofficial/AI-Automation-for-Fetching-Jobs-Job-Application`
+- `GH_REPO` — `pratikjagtapofficial/AI-Automation-for-Fetching-Job-Application`
 
 ### 6. Point Telegram at the Worker
 ```bash
